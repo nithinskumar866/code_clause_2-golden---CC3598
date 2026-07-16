@@ -1,0 +1,40 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ---- Node / Frontend ----
+node_modules/
+ai_hiring_platform/frontend/dist/
+*.local
+
+# ---- Environment / secrets ----
+.env
+.env.*
+!.env.example
+
+# ---- Databases ----
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- Runtime-generated artifacts ----
+ai_hiring_platform/backend/temp_uploads/
+ai_hiring_platform/storage/
+ai_hiring_platform/backend/logs/
+
+# ---- OS / Editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
