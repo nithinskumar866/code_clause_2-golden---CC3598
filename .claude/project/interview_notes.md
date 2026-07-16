@@ -20,6 +20,15 @@ Keyword/ATS matching misses paraphrase, synonyms, and transferable experience ("
 ### Why embeddings (BAAI/bge-small-en-v1.5)?
 A strong, small, local sentence-embedding model — good retrieval quality at low latency and no API cost, and it doubles as the basis for generic skill categorization (nearest-centroid) and transferability, so we avoid hardcoded skill tables.
 
+### Why cosine similarity?
+Embeddings encode meaning as direction in vector space; cosine similarity compares direction independent of magnitude, so it measures semantic relatedness robustly. It's cheap, bounded, and interpretable — ideal for ranking evidence and estimating skill transfer.
+
+### Why deterministic algorithms instead of letting the LLM do everything?
+Anything that must be reproducible and auditable — score aggregation, confidence, ranking, category classification, transfer estimation — is done with algorithms so the same input always yields the same output and every number is explainable. LLMs are non-deterministic and can drift; using them for exact computation would make results unstable and hard to defend.
+
+### Why not a single LLM doing the whole task?
+A single LLM reading a resume and "deciding" is a black box: unreproducible, prone to hallucinating qualifications, and unexplainable. Splitting into retrieval (evidence) + reasoning (over evidence), with algorithms for the exact parts, gives grounding, reproducibility, and a decision you can trace back to specific resume evidence.
+
 ### Why evidence before reasoning?
 So conclusions are grounded and explainable. The decision agent can only cite what was retrieved, which makes every strength/gap/score traceable to a resume location and keeps the LLM from inventing qualifications.
 
