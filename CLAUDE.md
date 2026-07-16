@@ -116,6 +116,34 @@ First backend run is slow (BGE model load); subsequent runs ~6–12s. Expected b
 
 ---
 
-## 8. Known non-blocking debt
+## 8. Development workflow (per slice)
+
+```
+Plan → Implement → Test → Review → Merge → Verify → Push
+```
+One vertical slice at a time. Define the API contract first, build backend + frontend in parallel on their branches, merge into `main` in the main worktree, run the full gate, push only when green.
+
+## 9. Working discipline (how every session should behave)
+
+**Do not jump straight to writing code.** For any non-trivial task:
+1. **Inspect** the relevant code first — never assume.
+2. **Design** the approach and identify dependencies/contract impact.
+3. **Explain** the plan briefly before large changes.
+4. **Implement** in the correct layer (services do logic, agents orchestrate, routers expose).
+5. **Test** — add/extend tests; run them.
+6. **Verify** — tests + build (+ integration for QA) green.
+7. **Summarize** what changed, honestly (including anything skipped or still red).
+
+Stay in your lane: backend never edits frontend; frontend never changes backend algorithms; QA fixes only verified bugs.
+
+## 10. Knowledge base map
+
+- **Skills** (`.claude/skills/`): `architecture`, `rag`, `langgraph`, `backend-dev`, `frontend-dev`, `testing`, `qa-verify`, `git-workflow`.
+- **Commands** (`.claude/commands/`): `/verify-backend`, `/verify-frontend`, `/verify-all`, `/build`, `/merge`, `/release`.
+- **Project docs** (`.claude/project/`): `roadmap.md`, `api_contract.md` (the coordination surface), `decisions.md` (ADR log), `session_log.md` (cross-session memory), `interview_notes.md` (design rationale Q&A).
+
+Update `session_log.md` after meaningful work and `decisions.md` when you make a significant choice, so the next session inherits full context.
+
+## 11. Known non-blocking debt
 
 Pydantic v2 `class Config` → `ConfigDict` (schemas); outdated Anthropic model id in `evaluation_service.get_llm()`; `datetime.utcnow()` deprecation. Warnings only — do not block work; fix opportunistically.
