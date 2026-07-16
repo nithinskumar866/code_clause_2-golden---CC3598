@@ -38,3 +38,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# ---- Per-worktree local guides (not merged into main) ----
+WORKTREE_README.md
