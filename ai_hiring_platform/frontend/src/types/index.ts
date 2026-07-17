@@ -101,6 +101,43 @@ export interface AnalysisReport {
   rejection_email: string | null;
 }
 
+/** Recruiter recommendation buckets accepted by the history filter. */
+export type RecommendationValue = 'Selected' | 'Borderline' | 'Rejected';
+
+/** Result orderings accepted by the history endpoint. */
+export type HistorySortValue = 'newest' | 'oldest' | 'highest_score' | 'lowest_score';
+
+/**
+ * Query parameters for GET /analysis/history. Keys map 1:1 to the backend
+ * query parameter names — the single source of truth for the contract.
+ */
+export interface HistoryQuery {
+  resume_filename?: string;
+  jd_filename?: string;
+  recommendation?: RecommendationValue;
+  min_score?: number;
+  max_score?: number;
+  date_from?: string; // YYYY-MM-DD
+  date_to?: string; // YYYY-MM-DD
+  sort?: HistorySortValue;
+  page?: number;
+  page_size?: number;
+}
+
+/** Pagination metadata returned in the response envelope's `meta` field. */
+export interface HistoryPageMeta {
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+/** A page of history results: the rows plus pagination metadata. */
+export interface HistoryPage {
+  items: HistoryRecord[];
+  meta: HistoryPageMeta;
+}
+
 /**
  * A summary row for a previously stored analysis, as returned by the
  * history list endpoint. The full report is fetched separately by id.

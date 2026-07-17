@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AnalysisReport, HistoryRecord } from '../types';
+import type { AnalysisReport, HistoryRecord, HistoryQuery, HistoryPage, HistoryPageMeta } from '../types';
 
 /**
  * Analysis-history API client. Consumes only the stable backend contract:
@@ -44,10 +44,39 @@ function toHistoryRecord(raw: RawHistoryItem): HistoryRecord {
   };
 }
 
-export async function fetchHistory(): Promise<HistoryRecord[]> {
-  const res = await axios.get(HISTORY_URL);
+/**
+ * Search/filter/sort/paginate history. Every field of `query` maps directly
+ * to a backend query parameter; params are passed via axios (never hand-built
+ * query strings) and undefined fields are omitted. Returns the rows plus
+ * pagination metadata from the response envelope's `meta` field.
+ */
+export async function fetchHistory(query: HistoryQuery = {}): Promise<HistoryPage> {
+  const params: Record<string, string | number> = {};
+  if (query.resume_filename) params.resume_filename = query.resume_filename;
+  if (query.jd_filename) params.jd_filename = query.jd_filename;
+  if (query.recommendation) params.recommendation = query.recommendation;
+  if (query.min_score !== undefined) params.min_score = query.min_score;
+  if (query.max_score !== undefined) params.max_score = query.max_score;
+  if (query.date_from) params.date_from = query.date_from;
+  if (query.date_to) params.date_to = query.date_to;
+  if (query.sort) params.sort = query.sort;
+  if (query.page !== undefined) params.page = query.page;
+  if (query.page_size !== undefined) params.page_size = query.page_size;
+
+  const res = await axios.get(HISTORY_URL, { params });
   if (res.data && res.data.success) {
-    return (res.data.data as RawHistoryItem[]).map(toHistoryRecord);
+    const items = (res.data.data as RawHistoryItem[]).map(toHistoryRecord);
+    const raw = res.data.meta;
+    // Tolerate an older backend that omits `meta` (returns all rows unpaged).
+    const meta: HistoryPageMeta = raw
+      ? {
+          total_count: raw.total_count,
+          page: raw.page,
+          page_size: raw.page_size,
+          total_pages: raw.total_pages,
+        }
+      : { total_count: items.length, page: 1, page_size: items.length || 1, total_pages: 1 };
+    return { items, meta };
   }
   throw new Error(res.data?.message || 'Failed to load history');
 }

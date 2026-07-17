@@ -4,6 +4,7 @@ import { Topbar } from './components/layout/Topbar';
 import { PAGE_TITLES } from './components/layout/navConfig';
 import type { PageId } from './components/layout/navConfig';
 import type { HistoryRecord } from './types';
+import { updateSearchParams } from './lib/url';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { ResumeUpload } from './pages/Resume/ResumeUpload';
 import { JobUpload } from './pages/Job/JobUpload';
@@ -12,8 +13,17 @@ import { History } from './pages/History/History';
 import { CandidateProfile } from './pages/CandidateProfile/CandidateProfile';
 import { SystemStatus } from './pages/SystemStatus/SystemStatus';
 
+// Pages that can be restored from the URL `view` param (profile needs a
+// selected record, so it is not URL-restorable and is omitted here).
+const VIEW_PAGES: PageId[] = ['dashboard', 'resume', 'job', 'analysis', 'history', 'status'];
+
+const readView = (): PageId => {
+  const v = new URLSearchParams(window.location.search).get('view') as PageId | null;
+  return v && VIEW_PAGES.includes(v) ? v : 'dashboard';
+};
+
 const App: FC = () => {
-  const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
+  const [currentPage, setCurrentPage] = useState<PageId>(() => readView());
   const [selectedCandidate, setSelectedCandidate] = useState<HistoryRecord | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -26,9 +36,20 @@ const App: FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Restore the active page on browser back/forward.
+  useEffect(() => {
+    const onPop = () => setCurrentPage(readView());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   const navigate = (id: PageId) => {
     setCurrentPage(id);
     setSidebarOpen(false);
+    updateSearchParams((params) => {
+      if (id === 'dashboard') params.delete('view');
+      else params.set('view', id);
+    }, 'push');
   };
 
   const openCandidate = (record: HistoryRecord) => {
