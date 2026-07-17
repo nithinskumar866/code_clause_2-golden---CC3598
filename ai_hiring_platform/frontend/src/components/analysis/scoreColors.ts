@@ -33,3 +33,16 @@ export const REQUIREMENT_STATUS_HEX: Record<string, string> = {
   Partial: '#fbbf24', // amber-400
   Missing: '#fb7185', // rose-400
 };
+
+/** Hiring outcome bucket derived from the overall score (same thresholds). */
+export type FitCategory = 'Selected' | 'Borderline' | 'Rejected';
+
+export const classifyFit = (score: number): FitCategory =>
+  score >= 75 ? 'Selected' : score >= 60 ? 'Borderline' : 'Rejected';
+
+/** Badge styling per outcome bucket. */
+export const FIT_CATEGORY_STYLE: Record<FitCategory, string> = {
+  Selected: 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10',
+  Borderline: 'text-amber-400 border-amber-500/20 bg-amber-500/10',
+  Rejected: 'text-rose-400 border-rose-500/20 bg-rose-500/10',
+};

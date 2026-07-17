@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { LayoutDashboard, FileUp, Briefcase, Sparkles, Settings2, BrainCircuit } from 'lucide-react';
+import { LayoutDashboard, FileUp, Briefcase, Sparkles, Clock, Settings2, BrainCircuit } from 'lucide-react';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { ResumeUpload } from './pages/Resume/ResumeUpload';
 import { JobUpload } from './pages/Job/JobUpload';
 import { Analysis } from './pages/Analysis/Analysis';
+import { History } from './pages/History/History';
 import { SystemStatus } from './pages/SystemStatus/SystemStatus';
 
-type Page = 'dashboard' | 'resume' | 'job' | 'analysis' | 'status';
+type Page = 'dashboard' | 'resume' | 'job' | 'analysis' | 'history' | 'status';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
@@ -16,6 +17,7 @@ export default function App() {
     { name: 'Upload Resumes', id: 'resume' as Page, icon: FileUp },
     { name: 'Upload Job Description', id: 'job' as Page, icon: Briefcase },
     { name: 'AI Analysis', id: 'analysis' as Page, icon: Sparkles },
+    { name: 'Analysis History', id: 'history' as Page, icon: Clock },
     { name: 'System Status', id: 'status' as Page, icon: Settings2 },
   ];
 
@@ -29,6 +31,8 @@ export default function App() {
         return <JobUpload />;
       case 'analysis':
         return <Analysis />;
+      case 'history':
+        return <History />;
       case 'status':
         return <SystemStatus />;
       default:

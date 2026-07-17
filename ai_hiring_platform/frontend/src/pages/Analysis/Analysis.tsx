@@ -3,10 +3,7 @@ import { Database } from 'lucide-react';
 import axios from 'axios';
 import type { AnalysisReport, FileRecord } from '../../types';
 import { ConfigPanel } from '../../components/analysis/ConfigPanel';
-import { ReportHeader } from '../../components/analysis/ReportHeader';
-import type { ReportViewMode } from '../../components/analysis/ReportHeader';
-import { HiringReportView } from '../../components/analysis/HiringReportView';
-import { RawRagView } from '../../components/analysis/RawRagView';
+import { ReportViewer } from '../../components/analysis/ReportViewer';
 
 export const Analysis: FC = () => {
   const [resumes, setResumes] = useState<FileRecord[]>([]);
@@ -18,7 +15,6 @@ export const Analysis: FC = () => {
   const [evaluating, setEvaluating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<AnalysisReport | null>(null);
-  const [viewMode, setViewMode] = useState<ReportViewMode>('report');
 
   const fetchData = async () => {
     setLoadingLists(true);
@@ -75,17 +71,6 @@ export const Analysis: FC = () => {
     }
   };
 
-  const handleDownloadJSON = () => {
-    if (!report) return;
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(report, null, 2))}`;
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', jsonString);
-    downloadAnchor.setAttribute('download', `explainable_hiring_report_${report.analysis_id}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  };
-
   return (
     <div className="space-y-8 animate-fadeIn">
       <div>
@@ -121,19 +106,8 @@ export const Analysis: FC = () => {
               </p>
             </div>
           ) : (
-            <div className="space-y-6 animate-fadeIn">
-              <ReportHeader
-                report={report}
-                viewMode={viewMode}
-                onChangeView={setViewMode}
-                onDownload={handleDownloadJSON}
-              />
-
-              {viewMode === 'report' ? (
-                <HiringReportView report={report} />
-              ) : (
-                <RawRagView results={report.retrieval_results} />
-              )}
+            <div className="animate-fadeIn">
+              <ReportViewer report={report} />
             </div>
           )}
         </div>
