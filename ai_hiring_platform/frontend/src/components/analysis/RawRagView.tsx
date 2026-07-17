@@ -2,17 +2,28 @@ import type { FC } from 'react';
 import type { RetrievalResult } from '../../types';
 
 interface RawRagViewProps {
-  results: RetrievalResult[];
+  results?: RetrievalResult[];
 }
 
 /** Raw semantic retrieval matches per requirement (the evidence behind the report). */
-export const RawRagView: FC<RawRagViewProps> = ({ results }) => (
-  <div className="space-y-5">
-    <p className="text-xs text-gray-400">
-      Here are the semantic chunks matching the Job Description requirements extracted directly from the FAISS database
-      index:
-    </p>
-    {results.map((result, idx) => (
+export const RawRagView: FC<RawRagViewProps> = ({ results }) => {
+  const items = results ?? [];
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-xl border border-white/5 bg-card p-5 text-xs text-gray-400 italic">
+        Raw retrieval matches were not stored for this analysis. Re-run the evaluation to view live RAG evidence.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-gray-400">
+        Here are the semantic chunks matching the Job Description requirements extracted directly from the FAISS database
+        index:
+      </p>
+      {items.map((result, idx) => (
       <div key={idx} className="rounded-xl border border-white/5 bg-card p-5 space-y-4 hover:border-white/10 transition">
         <div className="flex items-center justify-between">
           <span className="inline-flex items-center rounded-lg bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-400 border border-indigo-500/20">
@@ -48,7 +59,8 @@ export const RawRagView: FC<RawRagViewProps> = ({ results }) => (
             ))}
           </div>
         )}
-      </div>
-    ))}
-  </div>
-);
+        </div>
+      ))}
+    </div>
+  );
+};
