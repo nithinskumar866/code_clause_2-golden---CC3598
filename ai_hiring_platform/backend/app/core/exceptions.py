@@ -21,6 +21,10 @@ class NotFoundError(AppException):
     def __init__(self, message: str, details: str = None):
         super().__init__(message, code="NOT_FOUND", status_code=404, details=details)
 
+class CorruptedReportError(AppException):
+    def __init__(self, message: str, details: str = None):
+        super().__init__(message, code="CORRUPTED_REPORT", status_code=422, details=details)
+
 def register_exception_handlers(app: FastAPI):
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException):
