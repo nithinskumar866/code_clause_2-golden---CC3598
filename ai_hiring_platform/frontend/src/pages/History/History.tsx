@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FC } from 'react';
-import { RefreshCw, Inbox, AlertCircle, Search } from 'lucide-react';
+import { RefreshCw, Inbox, Search } from 'lucide-react';
 import type { AnalysisReport, HistoryRecord } from '../../types';
 import { fetchHistory, fetchHistoryReport, deleteHistoryItem, clearHistory } from '../../api/history';
 import { classifyFit } from '../../components/analysis/scoreColors';
@@ -13,6 +13,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { useToast } from '../../components/ui/toast-context';
 
 type PendingAction = { kind: 'delete'; record: HistoryRecord } | { kind: 'clear' };
 
@@ -43,7 +44,8 @@ export const History: FC = () => {
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+
+  const toast = useToast();
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<HistoryFilter>('All');
@@ -125,23 +127,22 @@ export const History: FC = () => {
 
   const confirmAction = async () => {
     if (!pending) return;
+    const action = pending;
     setConfirmLoading(true);
-    setActionError(null);
     try {
-      if (pending.kind === 'delete') {
-        const { id } = pending.record;
-        await deleteHistoryItem(id);
-        setRecords((prev) => prev.filter((r) => r.id !== id));
+      if (action.kind === 'delete') {
+        await deleteHistoryItem(action.record.id);
+        setRecords((prev) => prev.filter((r) => r.id !== action.record.id));
+        toast.success('Analysis deleted');
       } else {
         await clearHistory();
         setRecords([]);
+        toast.success('History cleared');
       }
       setPending(null);
     } catch (err: any) {
       console.error(err);
-      setActionError(
-        pending.kind === 'delete' ? 'Failed to delete this analysis.' : 'Failed to clear history.',
-      );
+      toast.error(action.kind === 'delete' ? 'Failed to delete this analysis.' : 'Failed to clear history.');
       setPending(null);
     } finally {
       setConfirmLoading(false);
@@ -166,16 +167,6 @@ export const History: FC = () => {
           </Button>
         }
       />
-
-      {actionError && (
-        <div
-          className="flex items-start gap-2.5 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400"
-          role="alert"
-        >
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{actionError}</span>
-        </div>
-      )}
 
       {!loading && !error && hasRecords && (
         <HistoryToolbar

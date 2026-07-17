@@ -1,6 +1,7 @@
 import type { FC } from 'react';
-import { Layers, AlertCircle, RefreshCw, Play } from 'lucide-react';
+import { Layers, RefreshCw, Play } from 'lucide-react';
 import type { FileRecord } from '../../types';
+import { Banner } from '../ui/Banner';
 
 interface ConfigPanelProps {
   resumes: FileRecord[];
@@ -40,12 +41,7 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
         <h2 className="text-base font-semibold text-white">Configure Analysis</h2>
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400">
-          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
+      {error && <Banner variant="error">{error}</Banner>}
 
       {showSkeleton ? (
         <div className="space-y-4">

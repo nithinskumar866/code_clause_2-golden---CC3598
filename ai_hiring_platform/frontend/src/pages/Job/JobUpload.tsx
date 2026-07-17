@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import type { UploadResult } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { Banner } from '../../components/ui/Banner';
+import { useToast } from '../../components/ui/toast-context';
 
 export const JobUpload: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -12,6 +14,7 @@ export const JobUpload: React.FC = () => {
   const [result, setResult] = useState<UploadResult | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -79,13 +82,17 @@ export const JobUpload: React.FC = () => {
       });
       if (response.data && response.data.success) {
         setResult(response.data.data);
+        toast.success('Job description uploaded successfully', response.data.data.filename);
       } else {
-        setError(response.data?.message || "Upload failed");
+        const msg = response.data?.message || 'Upload failed';
+        setError(msg);
+        toast.error(msg);
       }
     } catch (err: any) {
       console.error(err);
-      const detailMsg = err.response?.data?.error?.details || err.message || "Failed to reach server";
+      const detailMsg = err.response?.data?.error?.details || err.message || 'Failed to reach server';
       setError(detailMsg);
+      toast.error(detailMsg);
     } finally {
       setLoading(false);
     }
@@ -149,12 +156,7 @@ export const JobUpload: React.FC = () => {
             </div>
 
             {/* Error alerts */}
-            {error && (
-              <div className="flex items-center gap-3 rounded-lg border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-400">
-                <AlertCircle className="h-5 w-5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
+            {error && <Banner variant="error">{error}</Banner>}
 
             {/* Selected File Details */}
             {file && (
