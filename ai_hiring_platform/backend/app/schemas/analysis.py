@@ -70,6 +70,7 @@ class AnalysisHistoryItem(BaseModel):
     job_description_id: int = Field(..., description="Source job description ID")
     resume_filename: str = Field(..., description="Original resume filename")
     jd_filename: str = Field(..., description="Original job description filename")
+    workflow_status: str = Field("Applied", description="Candidate hiring workflow status")
     overall_score: int = Field(..., description="Weighted overall compatibility score")
     coverage_score: int = Field(..., description="Requirement coverage score")
     experience_score: int = Field(..., description="Experience alignment score")

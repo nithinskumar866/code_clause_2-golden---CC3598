@@ -26,14 +26,20 @@ def init_test_db():
 @pytest.fixture
 def db_session():
     connection = engine.connect()
-    transaction = connection.begin()
     session = TestingSessionLocal(bind=connection)
-    
-    yield session
-    
-    session.close()
-    transaction.rollback()
-    connection.close()
+
+    try:
+        yield session
+    finally:
+        # Guarantee per-test isolation even when the code under test commits
+        # (endpoints and services do). Roll back anything pending, then wipe all
+        # rows so the next test starts from a clean slate.
+        session.rollback()
+        session.close()
+        for table in reversed(Base.metadata.sorted_tables):
+            connection.execute(table.delete())
+        connection.commit()
+        connection.close()
 
 @pytest.fixture
 def client(db_session):

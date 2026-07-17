@@ -43,6 +43,23 @@ class Settings:
     # as "Missing" rather than a weak "Partial" backed by an unrelated chunk.
     RETRIEVAL_MIN_SIMILARITY: float = float(os.getenv("RETRIEVAL_MIN_SIMILARITY", "0.30"))
 
+    # Dashboard analytics decision buckets (over overall_score 0-100).
+    # Selected: score >= SELECTED_MIN; Rejected: score < BORDERLINE_MIN;
+    # Borderline: everything in between. Trends window is DASHBOARD_TRENDS_DAYS days.
+    DASHBOARD_SELECTED_MIN: int = int(os.getenv("DASHBOARD_SELECTED_MIN", "80"))
+    DASHBOARD_BORDERLINE_MIN: int = int(os.getenv("DASHBOARD_BORDERLINE_MIN", "60"))
+    DASHBOARD_TRENDS_DAYS: int = int(os.getenv("DASHBOARD_TRENDS_DAYS", "30"))
+
+    # Analytics windows/limits and optional result cache.
+    ANALYTICS_DAILY_DAYS: int = int(os.getenv("ANALYTICS_DAILY_DAYS", "30"))
+    ANALYTICS_WEEKLY_WEEKS: int = int(os.getenv("ANALYTICS_WEEKLY_WEEKS", "12"))
+    ANALYTICS_MONTHLY_MONTHS: int = int(os.getenv("ANALYTICS_MONTHLY_MONTHS", "12"))
+    ANALYTICS_TOP_LIMIT: int = int(os.getenv("ANALYTICS_TOP_LIMIT", "5"))
+    ANALYTICS_RECENT_LIMIT: int = int(os.getenv("ANALYTICS_RECENT_LIMIT", "10"))
+    # Seconds to cache analytics aggregates across requests. 0 disables caching
+    # (default) so results are always fresh; set >0 in single-DB deployments.
+    ANALYTICS_CACHE_TTL_SECONDS: int = int(os.getenv("ANALYTICS_CACHE_TTL_SECONDS", "0"))
+
     # Skill-semantics reasoning (category classification + transferability)
     # Minimum centroid cosine similarity to accept a category; below this a
     # requirement is treated as an unknown/general skill.

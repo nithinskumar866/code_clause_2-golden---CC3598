@@ -29,11 +29,18 @@ ALLOWED_MIME_TYPES = {
 # AI configurations
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
-# Entity Statuses
+# Entity Statuses (pipeline processing state of a resume/JD/analysis)
 STATUS_UPLOADED = "Uploaded"
 STATUS_INDEXED = "Indexed"
 STATUS_ANALYSED = "Analysed"
 STATUS_FAILED = "Failed"
+
+# Candidate hiring workflow statuses (distinct from pipeline processing status).
+# Each analysis carries exactly one of these; new analyses default to "Applied".
+CANDIDATE_WORKFLOW_STATUSES = [
+    "Applied", "Screening", "Technical", "Manager", "HR", "Offer", "Joined", "Rejected"
+]
+DEFAULT_WORKFLOW_STATUS = "Applied"
 
 # Predefined Software Engineering Keyword Taxonomy
 # For extracting job requirements from Job Descriptions in jd_requirement_extractor.py
@@ -89,3 +96,13 @@ LEARNING_TRANSFER_BANDS = [
 
 # Learning effort for a partially-evidenced skill (listed but not demonstrated).
 PARTIAL_SKILL_LEARNING_TIME = "2-4 days"
+
+# Score distribution bands for dashboard analytics.
+# Inclusive ranges over overall_score (0-100). Each entry: (label, min, max).
+SCORE_DISTRIBUTION_BANDS = [
+    ("0-20", 0, 20),
+    ("21-40", 21, 40),
+    ("41-60", 41, 60),
+    ("61-80", 61, 80),
+    ("81-100", 81, 100),
+]
