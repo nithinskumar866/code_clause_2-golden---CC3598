@@ -37,6 +37,12 @@ class Settings:
     RETRIEVAL_WEIGHT_DENSITY: float = 0.05
     RETRIEVAL_WEIGHT_TECH_SPECIFICITY: float = 0.10
 
+    # Minimum raw cosine similarity (0..1) a retrieved chunk must clear to count as
+    # evidence for a requirement. Matches below this are dropped, so a requirement
+    # with no genuinely-relevant chunk yields zero matches and is correctly reported
+    # as "Missing" rather than a weak "Partial" backed by an unrelated chunk.
+    RETRIEVAL_MIN_SIMILARITY: float = float(os.getenv("RETRIEVAL_MIN_SIMILARITY", "0.30"))
+
     # Skill-semantics reasoning (category classification + transferability)
     # Minimum centroid cosine similarity to accept a category; below this a
     # requirement is treated as an unknown/general skill.

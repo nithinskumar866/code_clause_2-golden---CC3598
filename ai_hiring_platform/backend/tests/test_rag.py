@@ -122,3 +122,56 @@ def test_vector_store_and_retrieval(generate_sample_files):
         for f in os.listdir(persist_dir):
             os.remove(os.path.join(persist_dir, f))
         os.rmdir(persist_dir)
+
+def test_min_similarity_filters_weak_matches(generate_sample_files):
+    """
+    A requirement with no genuinely-relevant chunk must yield zero matches once the
+    similarity floor is applied, and downstream must report it as "Missing" rather
+    than a weak "Partial" backed by an unrelated nearest-neighbour chunk.
+    """
+    pdf_path, _ = generate_sample_files
+    pdf_text = parse_pdf(pdf_path)
+
+    nodes = structure_resume_to_nodes(
+        text=pdf_text,
+        candidate_id=98,
+        resume_id=98,
+        filename="test_temp_resume.pdf"
+    )
+
+    from app.services.ai.embedding_service import generate_embeddings_for_nodes
+    from app.services.ai.evaluation_service import run_mock_evaluation
+
+    nodes_embedded = generate_embeddings_for_nodes(nodes)
+    save_nodes_to_index(nodes_embedded, resume_id=98)
+    index = load_index(resume_id=98)
+    assert index is not None
+
+    # "kubernetes" is absent from the resume. FAISS still returns nearest neighbours
+    # (e.g. the Docker/AWS chunk), so a floor is required to reject them.
+    unrelated = ["kubernetes"]
+
+    # No floor -> nearest neighbours leak through as (misleading) evidence.
+    unfiltered = retrieve_evidence_for_requirements(
+        index=index, requirements=unrelated, top_k=3, min_similarity=0.0
+    )
+    assert len(unfiltered[0]["matches"]) > 0
+
+    # High floor -> weak matches are dropped, leaving no evidence.
+    filtered = retrieve_evidence_for_requirements(
+        index=index, requirements=unrelated, top_k=3, min_similarity=0.99
+    )
+    assert filtered[0]["matches"] == []
+
+    # Priority 3: empty matches must surface as a genuine "Missing", not "Partial".
+    report = run_mock_evaluation({"analysis_id": 1, "retrieval_results": filtered})
+    kubernetes_fit = [r for r in report.requirements if r.requirement == "kubernetes"][0]
+    assert kubernetes_fit.status == "Missing"
+    assert "kubernetes" in report.missing_skills
+
+    # Clean up vector index storage files created during test
+    persist_dir = f"./storage/vectors/resume_98"
+    if os.path.exists(persist_dir):
+        for f in os.listdir(persist_dir):
+            os.remove(os.path.join(persist_dir, f))
+        os.rmdir(persist_dir)
