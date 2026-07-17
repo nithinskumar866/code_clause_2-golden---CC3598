@@ -1,21 +1,31 @@
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from llama_index.core import VectorStoreIndex
 from app.core.logging import logger
 from app.core.config import settings
 
 def retrieve_evidence_for_requirements(
-    index: VectorStoreIndex, 
-    requirements: List[str], 
-    top_k: int = 4
+    index: VectorStoreIndex,
+    requirements: List[str],
+    top_k: int = 4,
+    min_similarity: Optional[float] = None
 ) -> List[Dict[str, Any]]:
     """
     Queries the FAISS index for each extracted requirement keyword.
     Ranks matches dynamically using similarity scores, section weights, and detail density signals,
     and returns a ranked, deduplicated, consolidated list of matches per requirement.
+
+    Chunks whose raw cosine similarity falls below ``min_similarity`` (defaults to
+    ``settings.RETRIEVAL_MIN_SIMILARITY``) are discarded as noise, so a requirement
+    with no genuinely-relevant evidence resolves to an empty match list — and is
+    reported downstream as "Missing" rather than a weak, misleading "Partial".
     """
-    logger.info(f"Initiating requirement-wise semantic retrieval for {len(requirements)} items (top_k={top_k})...")
-    
+    threshold = settings.RETRIEVAL_MIN_SIMILARITY if min_similarity is None else min_similarity
+    logger.info(
+        f"Initiating requirement-wise semantic retrieval for {len(requirements)} items "
+        f"(top_k={top_k}, min_similarity={threshold})..."
+    )
+
     retriever = index.as_retriever(similarity_top_k=top_k)
     retrieval_results = []
     
@@ -46,6 +56,16 @@ def retrieve_evidence_for_requirements(
                 seen_chunks.add(chunk_txt)
                 
                 score_rounded = round(float(score), 3)
+
+                # Drop weak matches below the similarity floor so that a genuinely
+                # absent skill produces no evidence (→ "Missing") instead of being
+                # backed by an unrelated nearest-neighbour chunk.
+                if score_rounded < threshold:
+                    logger.debug(
+                        f"Dropping match for '{req}' (score={score_rounded} < {threshold})"
+                    )
+                    continue
+
                 section = node.metadata.get("section", "Summary")
                 
                 # --- Dynamic Ranking Signals (Module 1 & 3) ---
