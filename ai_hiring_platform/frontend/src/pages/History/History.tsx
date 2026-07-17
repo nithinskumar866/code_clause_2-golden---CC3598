@@ -9,6 +9,10 @@ import type { HistoryFilter, HistorySort } from '../../components/history/Histor
 import { ReportModal } from '../../components/history/ReportModal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { Skeleton } from '../../components/common/Skeleton';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { Button } from '../../components/ui/Button';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorState } from '../../components/ui/ErrorState';
 
 type PendingAction = { kind: 'delete'; record: HistoryRecord } | { kind: 'clear' };
 
@@ -32,38 +36,6 @@ const HistoryCardSkeleton: FC = () => (
     </div>
     <Skeleton className="h-3 w-full" />
     <Skeleton className="h-3 w-5/6" />
-  </div>
-);
-
-const EmptyState: FC = () => (
-  <div className="flex flex-col items-center justify-center rounded-xl border border-white/5 bg-card px-6 py-24 text-center">
-    <Inbox className="mb-4 h-10 w-10 text-gray-500" />
-    <h3 className="text-base font-medium text-white">No analyses yet</h3>
-    <p className="mt-1 max-w-sm text-xs text-gray-400">
-      Run an evaluation from the AI Analysis page and it will appear here for you to revisit anytime.
-    </p>
-  </div>
-);
-
-const NoResultsState: FC = () => (
-  <div className="flex flex-col items-center justify-center rounded-xl border border-white/5 bg-card px-6 py-24 text-center">
-    <Search className="mb-4 h-10 w-10 text-gray-500" />
-    <h3 className="text-base font-medium text-white">No matching analyses</h3>
-    <p className="mt-1 max-w-sm text-xs text-gray-400">Try a different search term or filter.</p>
-  </div>
-);
-
-const ErrorState: FC<{ message: string; onRetry: () => void }> = ({ message, onRetry }) => (
-  <div className="flex flex-col items-center justify-center rounded-xl border border-rose-500/20 bg-card px-6 py-24 text-center">
-    <AlertCircle className="mb-4 h-10 w-10 text-rose-400" />
-    <h3 className="text-base font-medium text-white">Couldn't load history</h3>
-    <p className="mt-1 max-w-sm text-xs text-gray-400">{message}</p>
-    <button
-      onClick={onRetry}
-      className="mt-4 flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
-    >
-      <RefreshCw className="h-4 w-4" /> Retry
-    </button>
   </div>
 );
 
@@ -180,24 +152,26 @@ export const History: FC = () => {
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Analysis History</h1>
-          <p className="mt-2 text-sm text-gray-400">
-            Every evaluation the platform has produced. Open any record to revisit its full explainable report.
-          </p>
-        </div>
-        <button
-          onClick={loadHistory}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-gray-300 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </button>
-      </div>
+      <PageHeader
+        title="Analysis History"
+        description="Every evaluation the platform has produced. Open any record to revisit its full explainable report."
+        actions={
+          <Button
+            variant="secondary"
+            onClick={loadHistory}
+            loading={loading}
+            leftIcon={<RefreshCw className="h-4 w-4" />}
+          >
+            Refresh
+          </Button>
+        }
+      />
 
       {actionError && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400">
+        <div
+          className="flex items-start gap-2.5 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400"
+          role="alert"
+        >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{actionError}</span>
         </div>
@@ -223,11 +197,19 @@ export const History: FC = () => {
           ))}
         </div>
       ) : error ? (
-        <ErrorState message={error} onRetry={loadHistory} />
+        <ErrorState title="Couldn't load history" message={error} onRetry={loadHistory} />
       ) : !hasRecords ? (
-        <EmptyState />
+        <EmptyState
+          icon={<Inbox className="h-10 w-10" />}
+          title="No analyses yet"
+          description="Run an evaluation from the AI Analysis page and it will appear here for you to revisit anytime."
+        />
       ) : visible.length === 0 ? (
-        <NoResultsState />
+        <EmptyState
+          icon={<Search className="h-10 w-10" />}
+          title="No matching analyses"
+          description="Try a different search term or filter."
+        />
       ) : (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {visible.map((r) => (

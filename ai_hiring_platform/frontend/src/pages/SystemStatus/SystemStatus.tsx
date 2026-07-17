@@ -1,15 +1,14 @@
 import React from 'react';
 import { Cpu, Database, Eye, Users, ShieldAlert } from 'lucide-react';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 export const SystemStatus: React.FC = () => {
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-white">System Diagnostics</h1>
-        <p className="mt-2 text-sm text-gray-400">
-          Monitor configuration and registration status of core RAG systems and multi-agent systems.
-        </p>
-      </div>
+      <PageHeader
+        title="System Status"
+        description="Configuration and health of the core RAG and agent subsystems."
+      />
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* LLM Provider */}

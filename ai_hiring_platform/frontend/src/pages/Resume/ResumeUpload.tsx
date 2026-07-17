@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import type { UploadResult } from '../../types';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 export const ResumeUpload: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -107,12 +108,10 @@ export const ResumeUpload: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Upload Candidate Resumes</h1>
-        <p className="mt-2 text-sm text-gray-400">
-          Upload resumes in PDF or DOCX format to store metadata. Parsing and indexing are executed in Sprint 2.
-        </p>
-      </div>
+      <PageHeader
+        title="Resumes"
+        description="Upload candidate resumes (PDF or DOCX) to index them for semantic evaluation."
+      />
 
       <div className="max-w-2xl">
         {!result ? (

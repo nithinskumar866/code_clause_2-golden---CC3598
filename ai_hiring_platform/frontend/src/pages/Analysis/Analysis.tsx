@@ -4,6 +4,7 @@ import axios from 'axios';
 import type { AnalysisReport, FileRecord } from '../../types';
 import { ConfigPanel } from '../../components/analysis/ConfigPanel';
 import { ReportViewer } from '../../components/analysis/ReportViewer';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 export const Analysis: FC = () => {
   const [resumes, setResumes] = useState<FileRecord[]>([]);
@@ -73,12 +74,10 @@ export const Analysis: FC = () => {
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Explainable Hiring Decision Engine</h1>
-        <p className="mt-2 text-sm text-gray-400">
-          Orchestrate local RAG retrieval and explainable evaluation reasoning dynamically via LangGraph state graphs.
-        </p>
-      </div>
+      <PageHeader
+        title="AI Analysis"
+        description="Select a candidate and a job description, then run the explainable evaluation pipeline."
+      />
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <ConfigPanel
