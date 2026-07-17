@@ -65,11 +65,8 @@ export const Dashboard: FC<DashboardProps> = ({ onNavigate }) => {
     setRecentLoading(true);
     setRecentError(null);
     try {
-      const data = await fetchHistory();
-      const sorted = [...data].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-      setRecent(sorted.slice(0, RECENT_LIMIT));
+      const { items } = await fetchHistory({ sort: 'newest', page_size: RECENT_LIMIT });
+      setRecent(items);
     } catch {
       setRecentError('Failed to load recent evaluations. Ensure the backend is running.');
     } finally {

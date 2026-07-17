@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useState, type FC } from 'react';
-import { RefreshCw, Inbox, Search } from 'lucide-react';
-import type { HistoryRecord } from '../../types';
+import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
+import { RefreshCw, Inbox, Search, Trash2 } from 'lucide-react';
+import type { HistoryRecord, HistoryPageMeta } from '../../types';
 import { fetchHistory, deleteHistoryItem, clearHistory } from '../../api/history';
-import { classifyFit } from '../../components/analysis/scoreColors';
+import { useHistoryFilters } from '../../hooks/useHistoryFilters';
+import { toQuery, activeChips, PAGE_SIZE } from '../../lib/historyFilters';
 import { HistoryCard } from '../../components/history/HistoryCard';
-import { HistoryToolbar } from '../../components/history/HistoryToolbar';
-import type { HistoryFilter, HistorySort } from '../../components/history/HistoryToolbar';
+import { HistoryFilters } from '../../components/history/HistoryFilters';
+import { FilterChips } from '../../components/history/FilterChips';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { Skeleton } from '../../components/common/Skeleton';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { Pagination } from '../../components/ui/Pagination';
 import { useToast } from '../../components/ui/toast-context';
 
 interface HistoryProps {
@@ -19,11 +21,6 @@ interface HistoryProps {
 }
 
 type PendingAction = { kind: 'delete'; record: HistoryRecord } | { kind: 'clear' };
-
-const dateValue = (iso: string): number => {
-  const t = new Date(iso).getTime();
-  return Number.isNaN(t) ? 0 : t;
-};
 
 const HistoryCardSkeleton: FC = () => (
   <div className="space-y-4 rounded-xl border border-white/5 bg-card p-5">
@@ -44,61 +41,47 @@ const HistoryCardSkeleton: FC = () => (
 );
 
 export const History: FC<HistoryProps> = ({ onOpenCandidate }) => {
-  const [records, setRecords] = useState<HistoryRecord[]>([]);
+  const { filters, setFilters, setPage, removeFilter, clearAll } = useHistoryFilters();
+
+  const [items, setItems] = useState<HistoryRecord[]>([]);
+  const [meta, setMeta] = useState<HistoryPageMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const toast = useToast();
 
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<HistoryFilter>('All');
-  const [sort, setSort] = useState<HistorySort>('newest');
-
-  // Confirmation state
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
-  const loadHistory = async () => {
+  const query = useMemo(() => toQuery(filters), [filters]);
+  const chips = useMemo(() => activeChips(filters), [filters]);
+  const filtersActive = chips.length > 0;
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchHistory();
-      setRecords(data);
+      const page = await fetchHistory(query);
+      setItems(page.items);
+      setMeta(page.meta);
     } catch (err: any) {
       console.error(err);
       setError('Failed to load analysis history. Ensure the FastAPI backend is running.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [query]);
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    load();
+  }, [load]);
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const filtered = records.filter((r) => {
-      const matchesSearch =
-        !q || r.resume_filename.toLowerCase().includes(q) || r.jd_filename.toLowerCase().includes(q);
-      const matchesFilter = filter === 'All' || classifyFit(r.overall_score) === filter;
-      return matchesSearch && matchesFilter;
-    });
-    return [...filtered].sort((a, b) => {
-      switch (sort) {
-        case 'newest':
-          return dateValue(b.created_at) - dateValue(a.created_at);
-        case 'oldest':
-          return dateValue(a.created_at) - dateValue(b.created_at);
-        case 'highest':
-          return b.overall_score - a.overall_score;
-        case 'lowest':
-          return a.overall_score - b.overall_score;
-        default:
-          return 0;
-      }
-    });
-  }, [records, search, filter, sort]);
+  // Clamp the page if it falls out of range (after deletes or filter changes).
+  useEffect(() => {
+    if (meta && meta.total_pages >= 1 && filters.page > meta.total_pages) {
+      setPage(meta.total_pages);
+    }
+  }, [meta, filters.page, setPage]);
 
   const confirmAction = async () => {
     if (!pending) return;
@@ -107,14 +90,13 @@ export const History: FC<HistoryProps> = ({ onOpenCandidate }) => {
     try {
       if (action.kind === 'delete') {
         await deleteHistoryItem(action.record.id);
-        setRecords((prev) => prev.filter((r) => r.id !== action.record.id));
         toast.success('Analysis deleted');
       } else {
         await clearHistory();
-        setRecords([]);
         toast.success('History cleared');
       }
       setPending(null);
+      await load();
     } catch (err: any) {
       console.error(err);
       toast.error(action.kind === 'delete' ? 'Failed to delete this analysis.' : 'Failed to clear history.');
@@ -124,70 +106,94 @@ export const History: FC<HistoryProps> = ({ onOpenCandidate }) => {
     }
   };
 
-  const hasRecords = records.length > 0;
+  const total = meta?.total_count ?? 0;
+  const rangeStart = total === 0 ? 0 : (filters.page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = (filters.page - 1) * PAGE_SIZE + items.length;
 
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-6 animate-fadeIn">
       <PageHeader
         title="Analysis History"
-        description="Every evaluation the platform has produced. Open any record to view the full candidate profile."
+        description="Search, filter and sort every evaluation. Open any record to view the full candidate profile."
         actions={
-          <Button
-            variant="secondary"
-            onClick={loadHistory}
-            loading={loading}
-            leftIcon={<RefreshCw className="h-4 w-4" />}
-          >
-            Refresh
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              onClick={load}
+              loading={loading}
+              leftIcon={<RefreshCw className="h-4 w-4" />}
+            >
+              Refresh
+            </Button>
+            {total > 0 && (
+              <Button
+                variant="danger"
+                onClick={() => setPending({ kind: 'clear' })}
+                leftIcon={<Trash2 className="h-4 w-4" />}
+              >
+                Clear history
+              </Button>
+            )}
+          </>
         }
       />
 
-      {!loading && !error && hasRecords && (
-        <HistoryToolbar
-          search={search}
-          onSearchChange={setSearch}
-          filter={filter}
-          onFilterChange={setFilter}
-          sort={sort}
-          onSortChange={setSort}
-          onClearAll={() => setPending({ kind: 'clear' })}
-          clearDisabled={loading}
-        />
+      <HistoryFilters filters={filters} onChange={setFilters} onClearAll={clearAll} hasActive={filtersActive} />
+
+      <FilterChips chips={chips} onRemove={removeFilter} onClearAll={clearAll} />
+
+      {!loading && !error && total > 0 && (
+        <p className="text-xs text-gray-500" aria-live="polite">
+          Showing {rangeStart}–{rangeEnd} of {total} {total === 1 ? 'analysis' : 'analyses'}
+        </p>
       )}
 
-      {loading ? (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {[0, 1, 2, 3].map((i) => (
-            <HistoryCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : error ? (
-        <ErrorState title="Couldn't load history" message={error} onRetry={loadHistory} />
-      ) : !hasRecords ? (
-        <EmptyState
-          icon={<Inbox className="h-10 w-10" />}
-          title="No analyses yet"
-          description="Run an evaluation from the AI Analysis page and it will appear here for you to revisit anytime."
-        />
-      ) : visible.length === 0 ? (
-        <EmptyState
-          icon={<Search className="h-10 w-10" />}
-          title="No matching analyses"
-          description="Try a different search term or filter."
-        />
-      ) : (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {visible.map((r) => (
-            <HistoryCard
-              key={r.id}
-              record={r}
-              onOpen={onOpenCandidate}
-              onDelete={(record) => setPending({ kind: 'delete', record })}
+      <div aria-busy={loading}>
+        {loading ? (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            {[0, 1, 2, 3].map((i) => (
+              <HistoryCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : error ? (
+          <ErrorState title="Couldn't load history" message={error} onRetry={load} />
+        ) : items.length === 0 ? (
+          filtersActive ? (
+            <EmptyState
+              icon={<Search className="h-10 w-10" />}
+              title="No matching analyses"
+              description="No analyses match your current filters."
+              action={
+                <Button variant="secondary" onClick={clearAll}>
+                  Clear all filters
+                </Button>
+              }
             />
-          ))}
-        </div>
-      )}
+          ) : (
+            <EmptyState
+              icon={<Inbox className="h-10 w-10" />}
+              title="No analyses yet"
+              description="Run an evaluation from the AI Analysis page and it will appear here for you to revisit anytime."
+            />
+          )
+        ) : (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              {items.map((r) => (
+                <HistoryCard
+                  key={r.id}
+                  record={r}
+                  onOpen={onOpenCandidate}
+                  onDelete={(record) => setPending({ kind: 'delete', record })}
+                />
+              ))}
+            </div>
+            {meta && (
+              <Pagination page={filters.page} totalPages={meta.total_pages} onPage={setPage} />
+            )}
+          </div>
+        )}
+      </div>
 
       <ConfirmDialog
         open={pending !== null}
