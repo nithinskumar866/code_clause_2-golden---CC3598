@@ -2,6 +2,9 @@
 
 Running record of what each session accomplished, so context survives across cleared sessions. Newest first. Keep entries short: date · who (backend/frontend/qa/orchestrator) · what changed · verify result.
 
+## 2026-07-18 · Backend (main) — F3: candidate profile & seniority + checkpoint pushed
+Pushed the intelligent-core slice to origin/main (c8c5fc4); fast-forwarded dev/frontend + dev/backend. Built F3: `profile_service.py` (deterministic name/title/years + seniority-fit vs JD "N+ years"); Agent 1 attaches `candidate_profile`, evaluation carries it to `HiringReport.candidate_profile` (both paths, nullable). 5 new tests → **120 pass**. Updated frontend handoff (added CandidateProfile type + UI) and example payload. Contract change: yes (additive, nullable). F3 slice committed on `main` (see below). Held next: chunking, hybrid, multi-candidate ranking.
+
 ## 2026-07-18 · Backend (main) — F1: provider-agnostic LLM + grounded reasoning
 New `llm_service.py` (config-driven provider/model factory: openai/anthropic/google-gemini; installed google-genai integration; reads GOOGLE_API_KEY or GEMINI_API_KEY). Rebuilt evaluation LLM path into grounded, testable helpers (`_build_reasoning_prompt`/`_extract_json`/`_finalize_llm_report`) — LLM sees only retrieved evidence + must/nice importance; deterministic algorithms still own coverage/quality/authenticity/overall. Removed stale hardcoded model id. 8 new tests (llm_service + reasoning via fake LLM). Contract change: **no** (config + internal). Verify: pytest **115 pass**. Not committed. Enable live: set `LLM_PROVIDER=google` + `GEMINI_API_KEY` in backend/.env. **F3 (candidate profile/seniority) still pending.** Held for later: chunking, hybrid search, multi-candidate ranking.
 

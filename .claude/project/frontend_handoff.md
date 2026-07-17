@@ -31,6 +31,20 @@ export interface AuthenticityAssessment {
 export interface AnalysisReport {
   // ...existing fields...
   authenticity?: AuthenticityAssessment | null;
+  candidate_profile?: CandidateProfile | null;
+}
+```
+
+### New `CandidateProfile` (F3 — identity + seniority)
+```ts
+export interface CandidateProfile {
+  name: string | null;
+  title: string | null;
+  total_years: number | null;
+  seniority_level: 'Junior' | 'Mid' | 'Senior' | 'Lead' | null;
+  required_years: number | null;                    // from the JD, if stated
+  seniority_fit: 'Below' | 'Meets' | 'Exceeds' | 'Unknown' | null;
+  explanation: string;
 }
 ```
 
@@ -56,7 +70,12 @@ export interface AnalysisReport {
   `"Missing must-have requirement: ..."`; a High stuffing risk adds a
   `"Possible keyword stuffing: ..."` line. No special handling required — just render the list.
 
+**Candidate profile (the existing `CandidateProfile` page / report header)**
+- Show `name`, `title`, and `total_years`. Render a **seniority-fit chip** from
+  `seniority_fit` (`Below`→red, `Meets`→green, `Exceeds`→blue, `Unknown`→grey) with
+  `explanation` as subtext (e.g. "6 yrs (Senior) vs 5+ required — meets the bar").
+- All fields are nullable — hide any that are `null`.
+
 ## 3. Not in this handoff
 - LLM provider/model is backend config only (`LLM_PROVIDER`/`LLM_MODEL`) — nothing to mirror.
-- Candidate profile / seniority (F3) is not built yet; the `CandidateProfile` page stays as-is
-  until F3 lands (a later additive change).
+- Held for later (backend): better chunking, hybrid retrieval, multi-candidate ranking.

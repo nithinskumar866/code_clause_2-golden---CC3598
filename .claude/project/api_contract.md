@@ -35,6 +35,15 @@ learning_roadmap : LearningRoadmapItem[]
 recruiter_recommendation : string
 rejection_email : string | null
 authenticity : AuthenticityAssessment | null
+candidate_profile : CandidateProfile | null
+```
+`CandidateProfile` (deterministic identity + seniority fit):
+```
+name, title : string | null
+total_years, required_years : float | null
+seniority_level : "Junior"|"Mid"|"Senior"|"Lead" | null
+seniority_fit : "Below"|"Meets"|"Exceeds"|"Unknown" | null
+explanation : string
 ```
 `AuthenticityAssessment` (keyword-stuffing / over-claim detection, deterministic):
 ```

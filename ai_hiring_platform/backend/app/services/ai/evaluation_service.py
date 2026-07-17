@@ -136,6 +136,8 @@ def _finalize_llm_report(report_data: Dict[str, Any], evidence_data: Dict[str, A
     report_data["quality_score"] = auth.quality_score
     report_data["authenticity"] = auth.assessment.model_dump()
     report_data["coverage_score"] = _weighted_coverage(results)
+    # Candidate profile is computed deterministically upstream (Agent 1); carry it through.
+    report_data["candidate_profile"] = evidence_data.get("candidate_profile")
 
     # Stamp requirement importance/weight from evidence onto the LLM's fits.
     priority_by_req = {str(it.get("requirement", "")).lower(): it for it in results}
@@ -410,5 +412,6 @@ Recruitment Team"""
         interview_questions=questions[:4],
         recruiter_recommendation=recruiter_recommendation,
         rejection_email=rejection_email,
-        authenticity=authenticity_result.assessment
+        authenticity=authenticity_result.assessment,
+        candidate_profile=evidence_data.get("candidate_profile")
     )

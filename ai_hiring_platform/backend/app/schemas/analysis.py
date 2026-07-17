@@ -36,6 +36,18 @@ class LearningRoadmapItem(BaseModel):
     estimated_time: str = Field(..., description="Realistic dynamic upskilling learning time, e.g. '5-7 days'")
     reason: str = Field(..., description="Transferable skill and dependency reasoning context")
 
+class CandidateProfile(BaseModel):
+    """Lightweight candidate identity + seniority, derived deterministically from the
+    resume text and compared against the JD's stated experience requirement. Answers
+    'who is this and are they senior enough for the role' — which pure skill-fit misses."""
+    name: Optional[str] = Field(None, description="Candidate name, if detectable")
+    title: Optional[str] = Field(None, description="Most recent / headline role title")
+    total_years: Optional[float] = Field(None, description="Estimated total years of experience")
+    seniority_level: Optional[str] = Field(None, description="Junior | Mid | Senior | Lead (from total_years)")
+    required_years: Optional[float] = Field(None, description="Years the JD asks for, if stated")
+    seniority_fit: Optional[str] = Field(None, description="Below | Meets | Exceeds | Unknown vs the JD requirement")
+    explanation: str = Field("", description="Recruiter-readable seniority rationale")
+
 class AuthenticityAssessment(BaseModel):
     """Deterministic credibility signal: how well claimed skills are corroborated by
     concrete Experience/Project evidence, and whether the resume shows keyword stuffing
@@ -74,6 +86,8 @@ class HiringReport(BaseModel):
     # Deterministic authenticity signal (keyword-stuffing / over-claim detection).
     # Optional so historical reports persisted before this field validate as None.
     authenticity: Optional[AuthenticityAssessment] = Field(None, description="Credibility assessment: corroboration of claims + keyword-stuffing risk")
+    # Candidate identity + seniority fit (deterministic). Optional/nullable for backward-compat.
+    candidate_profile: Optional[CandidateProfile] = Field(None, description="Candidate name/title/seniority and fit vs the JD's stated experience requirement")
 
 # --- Analysis History Schemas ---
 # History is a read/manage view over already-persisted evaluations (the Analysis
