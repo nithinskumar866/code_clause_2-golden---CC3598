@@ -6,6 +6,15 @@
     "candidate_id": 42,
     "resume_id": 42,
     "jd_id": 7,
+    "candidate_profile": {
+      "name": "Jane Doe",
+      "title": "Senior Backend Engineer",
+      "total_years": 6.0,
+      "seniority_level": "Senior",
+      "required_years": 5.0,
+      "seniority_fit": "Meets",
+      "explanation": "~6 year(s) of experience (Senior) vs the JD's 5+ year requirement \u2014 candidate meets the stated seniority bar."
+    },
     "retrieval_results": [
       {
         "requirement": "python",

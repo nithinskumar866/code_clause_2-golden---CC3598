@@ -10,7 +10,8 @@ from app.services.ai import (
     vector_store_service,
     jd_parser,
     jd_requirement_extractor,
-    retrieval_service
+    retrieval_service,
+    profile_service
 )
 from app.core.constants import REPORT_DIR
 from app.core.logging import logger
@@ -99,12 +100,22 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
             item["importance"] = pr["importance"]
             item["weight"] = pr["weight"]
 
+        # 4c. Derive a deterministic candidate profile (identity + seniority fit vs the
+        # JD). Uses parsed resume text — the LLM never sees the raw document.
+        candidate_profile = None
+        try:
+            resume_text = document_loader.load_document(resume_path)
+            candidate_profile = profile_service.extract_profile(resume_text, jd_text).model_dump()
+        except Exception as e:
+            logger.error(f"Candidate profile extraction skipped: {e}", exc_info=True)
+
         # 5. Compile structured evidence report JSON
         report = {
             "analysis_id": analysis_id,
             "candidate_id": resume_id,
             "resume_id": resume_id,
             "jd_id": jd_id,
+            "candidate_profile": candidate_profile,
             "retrieval_results": retrieval_results
         }
         
