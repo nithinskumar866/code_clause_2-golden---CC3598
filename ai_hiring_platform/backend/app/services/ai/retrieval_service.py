@@ -3,6 +3,26 @@ from typing import List, Dict, Any, Optional
 from llama_index.core import VectorStoreIndex
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.constants import TECH_TAXONOMY
+
+# Single source of known technologies (no parallel hardcoded keyword list).
+_KNOWN_TECH = {s.lower() for skills in TECH_TAXONOMY.values() for s in skills}
+# A token is "technical" if it is CamelCase (TensorFlow), an acronym (AWS/SQL),
+# carries tech punctuation (C++, CI/CD, node.js), or embeds a digit (S3, k8s).
+_MORPH_TECH = re.compile(r"[A-Za-z]+[A-Z0-9]|[A-Z]{2,}|[A-Za-z]*[0-9][A-Za-z0-9]*|[A-Za-z][A-Za-z0-9]*[+#/.][A-Za-z0-9+#/.]*")
+
+
+def _technical_specificity(text: str) -> int:
+    """Generic 0-100 signal for how technically specific a chunk is — rewards concrete
+    technology mentions without hardcoding an example list. Counts distinct known-tech
+    terms plus morphologically-technical tokens (CamelCase / acronyms / symbols / digits)."""
+    lowered = text.lower()
+    hits = {t for t in _KNOWN_TECH if re.search(rf"(?<!\w){re.escape(t)}(?!\w)", lowered)}
+    for m in _MORPH_TECH.finditer(text):
+        tok = m.group(0).lower().strip("+#/.")
+        if len(tok) >= 2:
+            hits.add(tok)
+    return min(len(hits) * 20, 100)
 
 def retrieve_evidence_for_requirements(
     index: VectorStoreIndex,
@@ -28,15 +48,7 @@ def retrieve_evidence_for_requirements(
 
     retriever = index.as_retriever(similarity_top_k=top_k)
     retrieval_results = []
-    
-    # Common tech keyword patterns to identify technical specificity
-    tech_patterns = re.compile(
-        r"\b(python|javascript|typescript|c\+\+|java|go|rust|ruby|php|sql|nosql|docker|kubernetes|aws|gcp|azure|"
-        r"tensorflow|pytorch|keras|scikit-learn|fastapi|django|flask|react|vue|angular|redis|postgres|mysql|"
-        r"mongodb|kafka|rabbitmq|git|ci/cd|jenkins|terraform|ansible|nlp|cnn|rnn|bert|gpt|llm|ocr|cv|api)\b",
-        re.IGNORECASE
-    )
-    
+
     for req in requirements:
         logger.info(f"Querying vector store for requirement: '{req}'")
         try:
@@ -92,9 +104,9 @@ def retrieve_evidence_for_requirements(
                 elif text_len > 30:
                     density_score = 30
                     
-                # Signal 4: Normalized Technical Specificity (0-100)
-                tech_matches = tech_patterns.findall(chunk_txt)
-                tech_score = min(len(tech_matches) * 20, 100)
+                # Signal 4: Normalized Technical Specificity (0-100), computed
+                # generically from token morphology + the known-tech taxonomy.
+                tech_score = _technical_specificity(chunk_txt)
                 
                 # Calculate combined confidence score (0-100) using configurable weights
                 confidence_score = int(

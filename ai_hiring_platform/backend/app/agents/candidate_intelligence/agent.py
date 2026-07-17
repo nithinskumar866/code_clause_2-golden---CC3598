@@ -90,7 +90,15 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
             requirements=requirements,
             top_k=3
         )
-        
+
+        # 4b. Attach requirement priority (must-have vs nice-to-have + weight),
+        # derived from the JD wording, so downstream scoring is importance-weighted.
+        priorities = jd_requirement_extractor.classify_priorities(jd_text, requirements)
+        for item in retrieval_results:
+            pr = priorities.get(item["requirement"], {"importance": "must", "weight": 1.0})
+            item["importance"] = pr["importance"]
+            item["weight"] = pr["weight"]
+
         # 5. Compile structured evidence report JSON
         report = {
             "analysis_id": analysis_id,

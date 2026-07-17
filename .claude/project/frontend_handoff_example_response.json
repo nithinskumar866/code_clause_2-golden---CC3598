@@ -1,0 +1,155 @@
+{
+  "analysis_id": 9001,
+  "status": "Analysed",
+  "report": {
+    "analysis_id": 9001,
+    "candidate_id": 42,
+    "resume_id": 42,
+    "jd_id": 7,
+    "retrieval_results": [
+      {
+        "requirement": "python",
+        "importance": "must",
+        "weight": 1.0,
+        "matches": [
+          {
+            "chunk": "Built and shipped production REST APIs in Python with FastAPI over three years, owning schema design and CI/CD.",
+            "section": "Experience",
+            "score": 0.91,
+            "confidence": 92,
+            "page": 1,
+            "filename": "jane_doe.pdf",
+            "chunk_id": 3
+          }
+        ]
+      },
+      {
+        "requirement": "react",
+        "importance": "must",
+        "weight": 1.0,
+        "matches": [
+          {
+            "chunk": "React",
+            "section": "Skills",
+            "score": 0.74,
+            "confidence": 41,
+            "page": 2,
+            "filename": "jane_doe.pdf",
+            "chunk_id": 9
+          }
+        ]
+      },
+      {
+        "requirement": "kubernetes",
+        "importance": "nice",
+        "weight": 0.4,
+        "matches": []
+      },
+      {
+        "requirement": "5+ years experience",
+        "importance": "must",
+        "weight": 1.0,
+        "matches": []
+      }
+    ],
+    "overall_score": 39,
+    "coverage_score": 58,
+    "experience_score": 25,
+    "project_score": 0,
+    "confidence_score": 66,
+    "quality_score": 58,
+    "summary": "Candidate analyzed against 4 job parameters. Algorithm calculated overall compatibility fit at 39% based on requirement coverage (58%), experience section depth (25%), and evidence confidence (66%).",
+    "requirements": [
+      {
+        "requirement": "python",
+        "category": "Programming Language",
+        "status": "Matched",
+        "matched_evidence": "Built and shipped production REST APIs in Python with FastAPI over three years, owning schema design and CI/CD.",
+        "explanation": "Demonstrated practical applications inside Experience with high specificity.",
+        "limitations": "None",
+        "confidence": 92,
+        "importance": "must",
+        "weight": 1.0
+      },
+      {
+        "requirement": "react",
+        "category": "Frontend",
+        "status": "Partial",
+        "matched_evidence": "React",
+        "explanation": "Listed under Skills section without project descriptions or outcomes.",
+        "limitations": "Listed in Skills keyword list but lacks measurable project detail.",
+        "confidence": 41,
+        "importance": "must",
+        "weight": 1.0
+      },
+      {
+        "requirement": "kubernetes",
+        "category": "Cloud & DevOps",
+        "status": "Missing",
+        "matched_evidence": "",
+        "explanation": "No evidence found in candidate's resume.",
+        "limitations": "Document did not mention or imply competency in kubernetes.",
+        "confidence": 0,
+        "importance": "nice",
+        "weight": 0.4
+      },
+      {
+        "requirement": "5+ years experience",
+        "category": "Methodology & Practice",
+        "status": "Missing",
+        "matched_evidence": "",
+        "explanation": "No evidence found in candidate's resume.",
+        "limitations": "Document did not mention or imply competency in 5+ years experience.",
+        "confidence": 0,
+        "importance": "must",
+        "weight": 1.0
+      }
+    ],
+    "strengths": [
+      "Proven competency in python supported by matching Experience references."
+    ],
+    "weaknesses": [
+      "Possible keyword stuffing: react listed but not demonstrated in Experience/Projects.",
+      "Missing must-have requirement: 5+ years experience (Methodology & Practice).",
+      "Competency claim for react is only partially supported.",
+      "Missing nice-to-have: kubernetes (Cloud & DevOps)."
+    ],
+    "skill_relationships": [],
+    "missing_skills": [
+      "kubernetes",
+      "5+ years experience"
+    ],
+    "learning_roadmap": [
+      {
+        "skill": "react",
+        "estimated_time": "2-4 days",
+        "reason": "Candidate lists react but needs hands-on project practice to establish confidence."
+      },
+      {
+        "skill": "kubernetes",
+        "estimated_time": "21-28 days",
+        "reason": "Candidate lacks background in Cloud & DevOps concepts; requires core instruction."
+      },
+      {
+        "skill": "5+ years experience",
+        "estimated_time": "21-28 days",
+        "reason": "Candidate lacks background in Methodology & Practice concepts; requires core instruction."
+      }
+    ],
+    "interview_questions": [
+      "Depth: You demonstrate strong experience in python. Can you describe a complex troubleshooting scenario or trade-off decision you made using this tool?",
+      "Verification: You list react in your resume. Can you walk me through the configuration parameters or deployment settings you used in your projects?"
+    ],
+    "recruiter_recommendation": "Not Recommended - Reject",
+    "rejection_email": "Subject: Update on your application\n\nDear Candidate,\n\nThank you for sharing your resume and technical background with our recruitment team. We appreciate the time you took to compile your application.\n\nAfter analyzing the semantic alignment between your projects and our core requirements, we identified gaps in: react, kubernetes, 5+ years experience. As our role demands deep technical autonomy in these specific domains, we are not able to move forward with your candidacy at this time.\n\nWe were highly impressed by your qualifications and would love to retain your details for future opportunities. We wish you the best in your career search.\n\nBest regards,\nRecruitment Team",
+    "authenticity": {
+      "credibility_score": 50,
+      "keyword_stuffing_risk": "High",
+      "over_claimed_skills": [
+        "react"
+      ],
+      "corroboration_ratio": 0.5,
+      "explanation": "1 of 2 claimed skills (react) appear only in listing sections with no supporting Experience/Project evidence, indicating possible keyword stuffing or overstated proficiency (risk: High)."
+    }
+  }
+}
