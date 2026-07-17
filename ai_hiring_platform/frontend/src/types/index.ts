@@ -100,3 +100,19 @@ export interface AnalysisReport {
   recruiter_recommendation: string;
   rejection_email: string | null;
 }
+
+/**
+ * A summary row for a previously stored analysis, as returned by the
+ * history list endpoint. The full report is fetched separately by id.
+ */
+export interface HistoryRecord {
+  id: number; // analysis_id
+  created_at: string; // ISO timestamp
+  resume_id: number;
+  jd_id: number;
+  resume_filename: string;
+  jd_filename: string;
+  overall_score: number;
+  recruiter_recommendation: string;
+  summary: string;
+}
