@@ -1,147 +1,195 @@
-import React, { useEffect, useState } from 'react';
-import { Server, Database, BrainCircuit, ShieldAlert, Activity } from 'lucide-react';
+import { useEffect, useState, type FC } from 'react';
+import { Server, Database, Cpu, Boxes, Sparkles, Activity, ArrowRight } from 'lucide-react';
 import axios from 'axios';
+import type { HistoryRecord } from '../../types';
+import type { PageId } from '../../components/layout/navConfig';
+import { fetchHistory } from '../../api/history';
+import { getScoreColor } from '../../components/analysis/scoreColors';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { StatCard } from '../../components/ui/StatCard';
+import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import type { BadgeTone } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { Skeleton } from '../../components/common/Skeleton';
 
-interface HealthStatus {
-  backend: 'Connected' | 'Disconnected' | 'Checking';
-  database: 'Connected' | 'Disconnected' | 'Checking';
+type ConnState = 'Connected' | 'Disconnected' | 'Checking';
+
+interface DashboardProps {
+  onNavigate?: (id: PageId) => void;
 }
 
-export const Dashboard: React.FC = () => {
-  const [status, setStatus] = useState<HealthStatus>({
-    backend: 'Checking',
-    database: 'Checking',
-  });
+const toneFor = (state: ConnState): BadgeTone =>
+  state === 'Connected' ? 'success' : state === 'Disconnected' ? 'danger' : 'warning';
+
+const RECENT_LIMIT = 5;
+
+export const Dashboard: FC<DashboardProps> = ({ onNavigate }) => {
+  const [backend, setBackend] = useState<ConnState>('Checking');
+  const [database, setDatabase] = useState<ConnState>('Checking');
+
+  const [recent, setRecent] = useState<HistoryRecord[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+  const [recentError, setRecentError] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
     const checkHealth = async () => {
       try {
-        const response = await axios.get('http://localhost:8000/api/v1/health');
-        if (response.data && response.data.success) {
-          setStatus({
-            backend: 'Connected',
-            database: response.data.data.database === 'connected' ? 'Connected' : 'Disconnected',
-          });
+        const res = await axios.get('http://localhost:8000/api/v1/health');
+        if (!active) return;
+        if (res.data && res.data.success) {
+          setBackend('Connected');
+          setDatabase(res.data.data?.database === 'connected' ? 'Connected' : 'Disconnected');
         } else {
-          setStatus({ backend: 'Disconnected', database: 'Disconnected' });
+          setBackend('Disconnected');
+          setDatabase('Disconnected');
         }
-      } catch (error) {
-        console.error('Failed to reach backend health endpoint:', error);
-        setStatus({ backend: 'Disconnected', database: 'Disconnected' });
+      } catch {
+        if (!active) return;
+        setBackend('Disconnected');
+        setDatabase('Disconnected');
       }
     };
-
     checkHealth();
-    // Poll every 10 seconds
-    const interval = setInterval(checkHealth, 10000);
-    return () => clearInterval(interval);
+    const id = setInterval(checkHealth, 10000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
   }, []);
 
-  const getStatusColor = (val: string) => {
-    if (val === 'Connected') return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
-    if (val === 'Disconnected') return 'text-rose-400 bg-rose-500/10 border-rose-500/30';
-    return 'text-amber-400 bg-amber-500/10 border-amber-500/30';
+  const loadRecent = async () => {
+    setRecentLoading(true);
+    setRecentError(null);
+    try {
+      const data = await fetchHistory();
+      const sorted = [...data].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      setRecent(sorted.slice(0, RECENT_LIMIT));
+    } catch {
+      setRecentError('Failed to load recent evaluations. Ensure the backend is running.');
+    } finally {
+      setRecentLoading(false);
+    }
   };
 
-  const getStatusDot = (val: string) => {
-    if (val === 'Connected') return 'bg-emerald-500 shadow-emerald-500/50';
-    if (val === 'Disconnected') return 'bg-rose-500 shadow-rose-500/50';
-    return 'bg-amber-500 animate-pulse';
-  };
+  useEffect(() => {
+    loadRecent();
+  }, []);
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Dashboard Overview</h1>
-        <p className="mt-2 text-sm text-gray-400">
-          Real-time status tracking of the recruitment agent network and platform health.
-        </p>
+      <PageHeader
+        title="Dashboard"
+        description="Platform health and your most recent candidate evaluations at a glance."
+        actions={
+          onNavigate && (
+            <Button leftIcon={<Sparkles className="h-4 w-4" />} onClick={() => onNavigate('analysis')}>
+              New analysis
+            </Button>
+          )
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          icon={<Server className="h-6 w-6" />}
+          label="Backend API"
+          value="FastAPI Service"
+          badge={<Badge tone={toneFor(backend)}>{backend}</Badge>}
+        />
+        <StatCard
+          icon={<Database className="h-6 w-6" />}
+          iconClass="bg-cyan-500/10 text-cyan-400"
+          label="Database"
+          value="SQLite"
+          badge={<Badge tone={toneFor(database)}>{database}</Badge>}
+        />
+        <StatCard
+          icon={<Cpu className="h-6 w-6" />}
+          iconClass="bg-emerald-500/10 text-emerald-400"
+          label="Embeddings"
+          value="BGE-small (local)"
+          badge={<Badge tone="success">Active</Badge>}
+        />
+        <StatCard
+          icon={<Boxes className="h-6 w-6" />}
+          label="Vector Store"
+          value="FAISS (local)"
+          badge={<Badge tone="success">Active</Badge>}
+        />
       </div>
 
-      {/* Status Cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Backend status */}
-        <div className="relative overflow-hidden rounded-xl border border-white/5 bg-card p-5 transition hover:border-white/10">
-          <div className="flex items-center justify-between">
-            <div className="p-2.5 rounded-lg bg-indigo-500/10 text-indigo-400">
-              <Server className="h-6 w-6" />
-            </div>
-            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${getStatusColor(status.backend)}`}>
-              <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${getStatusDot(status.backend)}`} />
-              {status.backend}
-            </span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-sm font-medium text-gray-400">Backend API</h3>
-            <p className="text-xl font-semibold text-white mt-1">FastAPI Service</p>
-          </div>
-        </div>
-
-        {/* Database status */}
-        <div className="relative overflow-hidden rounded-xl border border-white/5 bg-card p-5 transition hover:border-white/10">
-          <div className="flex items-center justify-between">
-            <div className="p-2.5 rounded-lg bg-cyan-500/10 text-cyan-400">
-              <Database className="h-6 w-6" />
-            </div>
-            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${getStatusColor(status.database)}`}>
-              <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${getStatusDot(status.database)}`} />
-              {status.database}
-            </span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-sm font-medium text-gray-400">Database</h3>
-            <p className="text-xl font-semibold text-white mt-1">SQLite (SQLAlchemy)</p>
-          </div>
-        </div>
-
-        {/* Resume Agent status */}
-        <div className="relative overflow-hidden rounded-xl border border-white/5 bg-card p-5 transition hover:border-white/10">
-          <div className="flex items-center justify-between">
-            <div className="p-2.5 rounded-lg bg-pink-500/10 text-pink-400">
-              <BrainCircuit className="h-6 w-6" />
-            </div>
-            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-amber-500/30 bg-amber-500/10 text-amber-400">
-              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
-              Not Configured
-            </span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-sm font-medium text-gray-400">Resume Intel Agent</h3>
-            <p className="text-xl font-semibold text-white mt-1">LlamaIndex RAG</p>
-          </div>
-        </div>
-
-        {/* Evaluator Agent status */}
-        <div className="relative overflow-hidden rounded-xl border border-white/5 bg-card p-5 transition hover:border-white/10">
-          <div className="flex items-center justify-between">
-            <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400">
-              <ShieldAlert className="h-6 w-6" />
-            </div>
-            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-amber-500/30 bg-amber-500/10 text-amber-400">
-              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
-              Not Configured
-            </span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-sm font-medium text-gray-400">Evaluator Agent</h3>
-            <p className="text-xl font-semibold text-white mt-1">LLM Reasoning</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="rounded-xl border border-white/5 bg-card p-6">
+      <Card className="p-6">
         <div className="flex items-center justify-between border-b border-white/5 pb-4">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <Activity className="h-5 w-5 text-indigo-400" />
-            <h2 className="text-lg font-medium text-white">Recent Activity</h2>
+            <h2 className="text-base font-semibold text-white">Recent evaluations</h2>
           </div>
+          {onNavigate && !recentLoading && !recentError && recent.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => onNavigate('history')}>
+              View all <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-gray-400 text-sm">No analysis history found.</p>
-          <p className="text-gray-500 text-xs mt-1">Uploaded documents will appear here once analysis is configured in Sprint 2.</p>
+
+        <div className="pt-4">
+          {recentLoading ? (
+            <ul className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <li key={i}>
+                  <Skeleton className="h-14 w-full" />
+                </li>
+              ))}
+            </ul>
+          ) : recentError ? (
+            <ErrorState message={recentError} onRetry={loadRecent} />
+          ) : recent.length === 0 ? (
+            <EmptyState
+              icon={<Activity className="h-9 w-9" />}
+              title="No evaluations yet"
+              description="Run your first candidate evaluation to see it appear here."
+              action={
+                onNavigate && (
+                  <Button variant="secondary" onClick={() => onNavigate('analysis')}>
+                    Go to AI Analysis
+                  </Button>
+                )
+              }
+            />
+          ) : (
+            <ul className="divide-y divide-white/5">
+              {recent.map((r) => (
+                <li key={r.id}>
+                  <button
+                    onClick={() => onNavigate?.('history')}
+                    className="flex w-full items-center gap-4 rounded-lg px-2 py-3 text-left transition hover:bg-white/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  >
+                    <span
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${getScoreColor(
+                        r.overall_score,
+                      )}`}
+                    >
+                      {r.overall_score}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-white">{r.resume_filename}</span>
+                      <span className="block truncate text-xs text-gray-500">{r.jd_filename}</span>
+                    </span>
+                    <span className="hidden max-w-[40%] truncate text-xs font-medium text-indigo-300 sm:block">
+                      {r.recruiter_recommendation}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

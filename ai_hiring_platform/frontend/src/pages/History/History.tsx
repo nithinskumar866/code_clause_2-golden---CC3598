@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState, type FC } from 'react';
-import { RefreshCw, Inbox, AlertCircle, Search } from 'lucide-react';
-import type { AnalysisReport, HistoryRecord } from '../../types';
-import { fetchHistory, fetchHistoryReport, deleteHistoryItem, clearHistory } from '../../api/history';
+import { RefreshCw, Inbox, Search } from 'lucide-react';
+import type { HistoryRecord } from '../../types';
+import { fetchHistory, deleteHistoryItem, clearHistory } from '../../api/history';
 import { classifyFit } from '../../components/analysis/scoreColors';
 import { HistoryCard } from '../../components/history/HistoryCard';
 import { HistoryToolbar } from '../../components/history/HistoryToolbar';
 import type { HistoryFilter, HistorySort } from '../../components/history/HistoryToolbar';
-import { ReportModal } from '../../components/history/ReportModal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { Skeleton } from '../../components/common/Skeleton';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { Button } from '../../components/ui/Button';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { useToast } from '../../components/ui/toast-context';
+
+interface HistoryProps {
+  onOpenCandidate: (record: HistoryRecord) => void;
+}
 
 type PendingAction = { kind: 'delete'; record: HistoryRecord } | { kind: 'clear' };
 
@@ -35,53 +43,16 @@ const HistoryCardSkeleton: FC = () => (
   </div>
 );
 
-const EmptyState: FC = () => (
-  <div className="flex flex-col items-center justify-center rounded-xl border border-white/5 bg-card px-6 py-24 text-center">
-    <Inbox className="mb-4 h-10 w-10 text-gray-500" />
-    <h3 className="text-base font-medium text-white">No analyses yet</h3>
-    <p className="mt-1 max-w-sm text-xs text-gray-400">
-      Run an evaluation from the AI Analysis page and it will appear here for you to revisit anytime.
-    </p>
-  </div>
-);
-
-const NoResultsState: FC = () => (
-  <div className="flex flex-col items-center justify-center rounded-xl border border-white/5 bg-card px-6 py-24 text-center">
-    <Search className="mb-4 h-10 w-10 text-gray-500" />
-    <h3 className="text-base font-medium text-white">No matching analyses</h3>
-    <p className="mt-1 max-w-sm text-xs text-gray-400">Try a different search term or filter.</p>
-  </div>
-);
-
-const ErrorState: FC<{ message: string; onRetry: () => void }> = ({ message, onRetry }) => (
-  <div className="flex flex-col items-center justify-center rounded-xl border border-rose-500/20 bg-card px-6 py-24 text-center">
-    <AlertCircle className="mb-4 h-10 w-10 text-rose-400" />
-    <h3 className="text-base font-medium text-white">Couldn't load history</h3>
-    <p className="mt-1 max-w-sm text-xs text-gray-400">{message}</p>
-    <button
-      onClick={onRetry}
-      className="mt-4 flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
-    >
-      <RefreshCw className="h-4 w-4" /> Retry
-    </button>
-  </div>
-);
-
-export const History: FC = () => {
+export const History: FC<HistoryProps> = ({ onOpenCandidate }) => {
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+
+  const toast = useToast();
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<HistoryFilter>('All');
   const [sort, setSort] = useState<HistorySort>('newest');
-
-  // Report modal state
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalReport, setModalReport] = useState<AnalysisReport | null>(null);
-  const [modalLoading, setModalLoading] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
 
   // Confirmation state
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -129,47 +100,24 @@ export const History: FC = () => {
     });
   }, [records, search, filter, sort]);
 
-  const openReport = async (id: number) => {
-    setModalOpen(true);
-    setModalReport(null);
-    setModalError(null);
-    setModalLoading(true);
-    try {
-      const report = await fetchHistoryReport(id);
-      setModalReport(report);
-    } catch (err: any) {
-      console.error(err);
-      setModalError('Failed to load this report.');
-    } finally {
-      setModalLoading(false);
-    }
-  };
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setModalReport(null);
-    setModalError(null);
-  };
-
   const confirmAction = async () => {
     if (!pending) return;
+    const action = pending;
     setConfirmLoading(true);
-    setActionError(null);
     try {
-      if (pending.kind === 'delete') {
-        const { id } = pending.record;
-        await deleteHistoryItem(id);
-        setRecords((prev) => prev.filter((r) => r.id !== id));
+      if (action.kind === 'delete') {
+        await deleteHistoryItem(action.record.id);
+        setRecords((prev) => prev.filter((r) => r.id !== action.record.id));
+        toast.success('Analysis deleted');
       } else {
         await clearHistory();
         setRecords([]);
+        toast.success('History cleared');
       }
       setPending(null);
     } catch (err: any) {
       console.error(err);
-      setActionError(
-        pending.kind === 'delete' ? 'Failed to delete this analysis.' : 'Failed to clear history.',
-      );
+      toast.error(action.kind === 'delete' ? 'Failed to delete this analysis.' : 'Failed to clear history.');
       setPending(null);
     } finally {
       setConfirmLoading(false);
@@ -180,28 +128,20 @@ export const History: FC = () => {
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Analysis History</h1>
-          <p className="mt-2 text-sm text-gray-400">
-            Every evaluation the platform has produced. Open any record to revisit its full explainable report.
-          </p>
-        </div>
-        <button
-          onClick={loadHistory}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-gray-300 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </button>
-      </div>
-
-      {actionError && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{actionError}</span>
-        </div>
-      )}
+      <PageHeader
+        title="Analysis History"
+        description="Every evaluation the platform has produced. Open any record to view the full candidate profile."
+        actions={
+          <Button
+            variant="secondary"
+            onClick={loadHistory}
+            loading={loading}
+            leftIcon={<RefreshCw className="h-4 w-4" />}
+          >
+            Refresh
+          </Button>
+        }
+      />
 
       {!loading && !error && hasRecords && (
         <HistoryToolbar
@@ -223,31 +163,31 @@ export const History: FC = () => {
           ))}
         </div>
       ) : error ? (
-        <ErrorState message={error} onRetry={loadHistory} />
+        <ErrorState title="Couldn't load history" message={error} onRetry={loadHistory} />
       ) : !hasRecords ? (
-        <EmptyState />
+        <EmptyState
+          icon={<Inbox className="h-10 w-10" />}
+          title="No analyses yet"
+          description="Run an evaluation from the AI Analysis page and it will appear here for you to revisit anytime."
+        />
       ) : visible.length === 0 ? (
-        <NoResultsState />
+        <EmptyState
+          icon={<Search className="h-10 w-10" />}
+          title="No matching analyses"
+          description="Try a different search term or filter."
+        />
       ) : (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {visible.map((r) => (
             <HistoryCard
               key={r.id}
               record={r}
-              onOpen={openReport}
+              onOpen={onOpenCandidate}
               onDelete={(record) => setPending({ kind: 'delete', record })}
             />
           ))}
         </div>
       )}
-
-      <ReportModal
-        open={modalOpen}
-        loading={modalLoading}
-        error={modalError}
-        report={modalReport}
-        onClose={closeModal}
-      />
 
       <ConfirmDialog
         open={pending !== null}

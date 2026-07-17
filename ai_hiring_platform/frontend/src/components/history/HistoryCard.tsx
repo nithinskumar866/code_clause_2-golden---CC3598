@@ -5,7 +5,7 @@ import { getScoreColor, getScoreLabel, classifyFit, FIT_CATEGORY_STYLE } from '.
 
 interface HistoryCardProps {
   record: HistoryRecord;
-  onOpen: (id: number) => void;
+  onOpen: (record: HistoryRecord) => void;
   onDelete: (record: HistoryRecord) => void;
 }
 
@@ -20,11 +20,11 @@ export const HistoryCard: FC<HistoryCardProps> = ({ record, onOpen, onDelete }) 
 
   return (
     <div
-      onClick={() => onOpen(record.id)}
+      onClick={() => onOpen(record)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onOpen(record.id);
+          onOpen(record);
         }
       }}
       role="button"

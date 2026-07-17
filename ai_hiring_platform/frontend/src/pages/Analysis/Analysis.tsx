@@ -4,6 +4,8 @@ import axios from 'axios';
 import type { AnalysisReport, FileRecord } from '../../types';
 import { ConfigPanel } from '../../components/analysis/ConfigPanel';
 import { ReportViewer } from '../../components/analysis/ReportViewer';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { useToast } from '../../components/ui/toast-context';
 
 export const Analysis: FC = () => {
   const [resumes, setResumes] = useState<FileRecord[]>([]);
@@ -15,6 +17,8 @@ export const Analysis: FC = () => {
   const [evaluating, setEvaluating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<AnalysisReport | null>(null);
+
+  const toast = useToast();
 
   const fetchData = async () => {
     setLoadingLists(true);
@@ -54,9 +58,13 @@ export const Analysis: FC = () => {
         `http://localhost:8000/api/v1/analysis/evaluate?resume_id=${selectedResume}&jd_id=${selectedJd}`,
       );
       if (response.data && response.data.success) {
-        setReport(response.data.data.report);
+        const rpt = response.data.data.report;
+        setReport(rpt);
+        toast.success('Evaluation complete', `Overall match score: ${rpt.overall_score}%`);
       } else {
-        setError(response.data?.message || 'Analysis evaluation failed.');
+        const msg = response.data?.message || 'Analysis evaluation failed.';
+        setError(msg);
+        toast.error(msg);
       }
     } catch (err: any) {
       console.error(err);
@@ -66,6 +74,7 @@ export const Analysis: FC = () => {
         err.message ||
         'Failed to trigger evaluation engine';
       setError(detailMsg);
+      toast.error(detailMsg);
     } finally {
       setEvaluating(false);
     }
@@ -73,12 +82,10 @@ export const Analysis: FC = () => {
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Explainable Hiring Decision Engine</h1>
-        <p className="mt-2 text-sm text-gray-400">
-          Orchestrate local RAG retrieval and explainable evaluation reasoning dynamically via LangGraph state graphs.
-        </p>
-      </div>
+      <PageHeader
+        title="AI Analysis"
+        description="Select a candidate and a job description, then run the explainable evaluation pipeline."
+      />
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <ConfigPanel
