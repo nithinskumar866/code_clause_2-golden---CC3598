@@ -36,6 +36,10 @@ class Analysis(Base):
     status = Column(String, default="Uploaded", nullable=False)  # Pipeline: Uploaded, Indexed, Analysed, Failed
     # Candidate hiring workflow stage (distinct from the pipeline status above).
     workflow_status = Column(String, default="Applied", server_default="Applied", nullable=False)
+    # Denormalized overall compatibility score from the hiring report, backfilled
+    # on history read. Enables efficient SQL filtering/sorting without loading the
+    # per-analysis report files. NULL until the analysis has a completed report.
+    overall_score = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

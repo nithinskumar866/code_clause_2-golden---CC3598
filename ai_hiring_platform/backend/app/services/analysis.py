@@ -1,17 +1,21 @@
 import os
 import json
-from typing import List, Optional
+import math
+from datetime import date
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from app.models.database import Analysis, Resume, JobDescription
 from app.core.constants import REPORT_DIR
 from app.core.logging import logger
+from app.repositories import history_repository
 from app.schemas.analysis import (
     HiringReport,
     AnalysisHistoryItem,
     AnalysisHistoryDetail,
 )
+from app.schemas.history import HistoryPageMeta
 
 # ---------------------------------------------------------------------------
 # Analysis History service.
@@ -49,18 +53,23 @@ def _is_completed(report: Optional[dict]) -> bool:
 def _build_item(
     analysis: Analysis,
     report: dict,
-    resume: Optional[Resume],
-    jd: Optional[JobDescription],
+    resume_filename: str,
+    jd_filename: str,
 ) -> AnalysisHistoryItem:
+    # overall_score is authoritative from the denormalized column; fall back to
+    # the report file when the column is not yet backfilled.
+    overall = analysis.overall_score
+    if overall is None:
+        overall = report.get("overall_score", 0)
     return AnalysisHistoryItem(
         analysis_id=analysis.id,
         timestamp=analysis.created_at,
         resume_id=analysis.resume_id,
         job_description_id=analysis.jd_id,
-        resume_filename=resume.filename if resume else "",
-        jd_filename=jd.filename if jd else "",
+        resume_filename=resume_filename or "",
+        jd_filename=jd_filename or "",
         workflow_status=getattr(analysis, "workflow_status", None) or "Applied",
-        overall_score=report.get("overall_score", 0),
+        overall_score=overall,
         coverage_score=report.get("coverage_score", 0),
         experience_score=report.get("experience_score", 0),
         project_score=report.get("project_score", 0),
@@ -70,22 +79,92 @@ def _build_item(
     )
 
 
-def list_history(db: Session) -> List[AnalysisHistoryItem]:
-    """Return all completed analyses as summary rows, newest first."""
-    analyses = (
-        db.query(Analysis)
-        .order_by(Analysis.created_at.desc(), Analysis.id.desc())
-        .all()
-    )
-    items: List[AnalysisHistoryItem] = []
-    for analysis in analyses:
+def _row_to_item(row) -> AnalysisHistoryItem:
+    """Enrich one repository row (Analysis, resume_filename, jd_filename)."""
+    analysis, resume_filename, jd_filename = row
+    report = _load_report(analysis.id) or {}
+    return _build_item(analysis, report, resume_filename, jd_filename)
+
+
+def sync_history_scores(db: Session) -> None:
+    """
+    Backfill Analysis.overall_score from persisted report files for any completed
+    analysis that has not been denormalized yet. Idempotent: only NULL rows are
+    touched, so this is a no-op once caught up. This is what keeps the evaluation
+    pipeline untouched while still enabling SQL-native score filtering.
+    """
+    pending = db.query(Analysis).filter(Analysis.overall_score.is_(None)).all()
+    updated = 0
+    for analysis in pending:
         report = _load_report(analysis.id)
-        if not _is_completed(report):
-            continue  # history begins only after evaluation completes
-        resume = db.query(Resume).filter(Resume.id == analysis.resume_id).first()
-        jd = db.query(JobDescription).filter(JobDescription.id == analysis.jd_id).first()
-        items.append(_build_item(analysis, report, resume, jd))
-    return items
+        if report and report.get("overall_score") is not None:
+            analysis.overall_score = int(report["overall_score"])
+            updated += 1
+    if updated:
+        db.commit()
+        logger.info(f"Backfilled overall_score for {updated} analyses.")
+
+
+def _empty_filters() -> dict:
+    return {
+        "resume_filename": None,
+        "jd_filename": None,
+        "recommendation": None,
+        "min_score": None,
+        "max_score": None,
+        "date_from": None,
+        "date_to": None,
+    }
+
+
+def list_history(db: Session) -> List[AnalysisHistoryItem]:
+    """Return all completed analyses as summary rows, newest first (unpaged)."""
+    sync_history_scores(db)
+    rows, _ = history_repository.search(db, filters=_empty_filters(), sort="newest", limit=None)
+    return [_row_to_item(row) for row in rows]
+
+
+def search_history(
+    db: Session,
+    *,
+    resume_filename: Optional[str] = None,
+    jd_filename: Optional[str] = None,
+    recommendation: Optional[str] = None,
+    min_score: Optional[int] = None,
+    max_score: Optional[int] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    sort: str = "newest",
+    page: int = 1,
+    page_size: Optional[int] = None,
+) -> Tuple[List[AnalysisHistoryItem], HistoryPageMeta]:
+    """
+    Search/filter/sort/paginate completed analyses. When page_size is None the
+    full matching set is returned (backward-compatible with the original
+    unpaged endpoint); otherwise LIMIT/OFFSET pagination is applied in SQL.
+    """
+    sync_history_scores(db)
+    filters = {
+        "resume_filename": resume_filename,
+        "jd_filename": jd_filename,
+        "recommendation": recommendation,
+        "min_score": min_score,
+        "max_score": max_score,
+        "date_from": date_from,
+        "date_to": date_to,
+    }
+
+    if page_size is None:
+        rows, total = history_repository.search(db, filters=filters, sort=sort, limit=None)
+        meta = HistoryPageMeta(total_count=total, page=1, page_size=total, total_pages=1 if total else 0)
+    else:
+        offset = (page - 1) * page_size
+        rows, total = history_repository.search(db, filters=filters, sort=sort, limit=page_size, offset=offset)
+        total_pages = math.ceil(total / page_size) if total else 0
+        meta = HistoryPageMeta(total_count=total, page=page, page_size=page_size, total_pages=total_pages)
+
+    items = [_row_to_item(row) for row in rows]
+    return items, meta
 
 
 def get_history_detail(db: Session, analysis_id: int) -> Optional[AnalysisHistoryDetail]:
@@ -98,7 +177,12 @@ def get_history_detail(db: Session, analysis_id: int) -> Optional[AnalysisHistor
         return None
     resume = db.query(Resume).filter(Resume.id == analysis.resume_id).first()
     jd = db.query(JobDescription).filter(JobDescription.id == analysis.jd_id).first()
-    item = _build_item(analysis, report, resume, jd)
+    item = _build_item(
+        analysis,
+        report,
+        resume.filename if resume else "",
+        jd.filename if jd else "",
+    )
     # Reuse the existing HiringReport schema; extra evidence keys are ignored.
     return AnalysisHistoryDetail(
         **item.model_dump(),

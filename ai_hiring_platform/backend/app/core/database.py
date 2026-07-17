@@ -24,6 +24,15 @@ def get_db():
     finally:
         db.close()
 
+# Columns added to `analyses` after the table's original creation, with the DDL
+# to add each. SQLite's create_all never ALTERs existing tables, so these are
+# applied idempotently by ensure_schema().
+_ANALYSES_ADDED_COLUMNS = {
+    "workflow_status": "ALTER TABLE analyses ADD COLUMN workflow_status VARCHAR NOT NULL DEFAULT 'Applied'",
+    "overall_score": "ALTER TABLE analyses ADD COLUMN overall_score INTEGER",
+}
+
+
 def ensure_schema(bind=None):
     """
     Additive, idempotent backfill for columns introduced after a database was
@@ -38,11 +47,15 @@ def ensure_schema(bind=None):
         existing = {row[1] for row in conn.execute(text("PRAGMA table_info(analyses)"))}
         # Empty means the table doesn't exist yet; create_all will build it with
         # the full, current column set, so there is nothing to backfill.
-        if existing and "workflow_status" not in existing:
-            logger.info("Backfilling column analyses.workflow_status (default 'Applied')...")
-            conn.execute(text(
-                "ALTER TABLE analyses ADD COLUMN workflow_status VARCHAR NOT NULL DEFAULT 'Applied'"
-            ))
+        if not existing:
+            return
+        added = False
+        for column, ddl in _ANALYSES_ADDED_COLUMNS.items():
+            if column not in existing:
+                logger.info(f"Backfilling column analyses.{column} ...")
+                conn.execute(text(ddl))
+                added = True
+        if added:
             conn.commit()
 
 

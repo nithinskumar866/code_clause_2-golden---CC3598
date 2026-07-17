@@ -1,12 +1,14 @@
 import os
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import date
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.constants import RESUME_UPLOAD_DIR, JOB_UPLOAD_DIR, STATUS_ANALYSED, STATUS_FAILED
 from app.core.logging import logger
 from app.schemas.response import ApiResponse
 from app.schemas.analysis import AnalysisHistoryItem, AnalysisHistoryDetail
+from app.schemas.history import RecommendationFilter, HistorySort
 from app.models.database import Resume, JobDescription, Analysis
 from app.workflows.hiring_workflow import execute_hiring_pipeline
 from app.services import analysis as history_service
@@ -99,13 +101,48 @@ def evaluate_candidate(resume_id: int, jd_id: int, db: Session = Depends(get_db)
 # that POST /evaluate has already persisted. /evaluate is intentionally untouched.
 
 @router.get("/history", response_model=ApiResponse[List[AnalysisHistoryItem]])
-def get_analysis_history(db: Session = Depends(get_db)):
-    """Return all completed analyses, newest first."""
-    items = history_service.list_history(db)
+def get_analysis_history(
+    resume_filename: Optional[str] = Query(None, description="Case-insensitive substring match on resume filename"),
+    jd_filename: Optional[str] = Query(None, description="Case-insensitive substring match on job description filename"),
+    recommendation: Optional[RecommendationFilter] = Query(None, description="Selected / Borderline / Rejected"),
+    min_score: Optional[int] = Query(None, ge=0, le=100, description="Minimum overall score"),
+    max_score: Optional[int] = Query(None, ge=0, le=100, description="Maximum overall score"),
+    date_from: Optional[date] = Query(None, description="Only analyses created on/after this date (YYYY-MM-DD)"),
+    date_to: Optional[date] = Query(None, description="Only analyses created on/before this date (YYYY-MM-DD)"),
+    sort: HistorySort = Query(HistorySort.newest, description="Result ordering"),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page; omit to return all matches"),
+    db: Session = Depends(get_db),
+):
+    """
+    Return completed analyses, filtered/sorted/paginated. With no query params
+    this returns all analyses newest-first (unchanged, backward-compatible).
+    Pagination metadata is reported in the response envelope's `meta` field.
+    """
+    # Cross-field validation (single-field bounds are enforced by Query above).
+    if min_score is not None and max_score is not None and min_score > max_score:
+        raise HTTPException(status_code=422, detail="min_score cannot be greater than max_score.")
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise HTTPException(status_code=422, detail="date_from cannot be after date_to.")
+
+    items, meta = history_service.search_history(
+        db,
+        resume_filename=resume_filename,
+        jd_filename=jd_filename,
+        recommendation=recommendation.value if recommendation else None,
+        min_score=min_score,
+        max_score=max_score,
+        date_from=date_from,
+        date_to=date_to,
+        sort=sort.value,
+        page=page,
+        page_size=page_size,
+    )
     return ApiResponse[List[AnalysisHistoryItem]](
         success=True,
-        message=f"Retrieved {len(items)} analyses from history.",
-        data=items
+        message=f"Retrieved {len(items)} of {meta.total_count} analyses from history.",
+        data=items,
+        meta=meta.model_dump(),
     )
 
 
