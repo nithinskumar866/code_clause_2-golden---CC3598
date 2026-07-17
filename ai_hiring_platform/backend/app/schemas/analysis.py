@@ -57,3 +57,27 @@ class HiringReport(BaseModel):
     
     recruiter_recommendation: str = Field(..., description="Overall hiring process recommendation, e.g., Proceed to Interview")
     rejection_email: Optional[str] = Field(None, description="Polite dynamic rejection email draft if compatibility is low")
+
+# --- Analysis History Schemas ---
+# History is a read/manage view over already-persisted evaluations (the Analysis
+# row + storage/reports/analysis_<id>.json). No new storage is introduced.
+
+class AnalysisHistoryItem(BaseModel):
+    """Compact summary row for the history list (newest first)."""
+    analysis_id: int = Field(..., description="ID of the completed analysis")
+    timestamp: datetime = Field(..., description="When the analysis was created")
+    resume_id: int = Field(..., description="Source resume ID")
+    job_description_id: int = Field(..., description="Source job description ID")
+    resume_filename: str = Field(..., description="Original resume filename")
+    jd_filename: str = Field(..., description="Original job description filename")
+    overall_score: int = Field(..., description="Weighted overall compatibility score")
+    coverage_score: int = Field(..., description="Requirement coverage score")
+    experience_score: int = Field(..., description="Experience alignment score")
+    project_score: int = Field(..., description="Project relevance score")
+    quality_score: int = Field(..., description="Resume quality score")
+    recruiter_recommendation: str = Field(..., description="Overall hiring recommendation")
+    summary: str = Field(..., description="Recruiter executive summary")
+
+class AnalysisHistoryDetail(AnalysisHistoryItem):
+    """A single history entry plus its full stored hiring report."""
+    report: HiringReport = Field(..., description="The full persisted hiring report")
