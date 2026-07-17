@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -40,3 +40,24 @@ class Analysis(Base):
     # Relationships
     resume = relationship("Resume", back_populates="analyses")
     jd = relationship("JobDescription", back_populates="analyses")
+    notes = relationship(
+        "RecruiterNote",
+        back_populates="analysis",
+        cascade="all, delete-orphan",
+    )
+
+
+class RecruiterNote(Base):
+    __tablename__ = "recruiter_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    analysis_id = Column(
+        Integer, ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    text = Column(Text, nullable=False)
+    author = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationship back to the owning analysis
+    analysis = relationship("Analysis", back_populates="notes")
