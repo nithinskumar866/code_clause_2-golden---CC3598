@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState, type FC } from 'react';
 import { RefreshCw, Inbox, Search } from 'lucide-react';
-import type { AnalysisReport, HistoryRecord } from '../../types';
-import { fetchHistory, fetchHistoryReport, deleteHistoryItem, clearHistory } from '../../api/history';
+import type { HistoryRecord } from '../../types';
+import { fetchHistory, deleteHistoryItem, clearHistory } from '../../api/history';
 import { classifyFit } from '../../components/analysis/scoreColors';
 import { HistoryCard } from '../../components/history/HistoryCard';
 import { HistoryToolbar } from '../../components/history/HistoryToolbar';
 import type { HistoryFilter, HistorySort } from '../../components/history/HistoryToolbar';
-import { ReportModal } from '../../components/history/ReportModal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { Skeleton } from '../../components/common/Skeleton';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -14,6 +13,10 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { useToast } from '../../components/ui/toast-context';
+
+interface HistoryProps {
+  onOpenCandidate: (record: HistoryRecord) => void;
+}
 
 type PendingAction = { kind: 'delete'; record: HistoryRecord } | { kind: 'clear' };
 
@@ -40,7 +43,7 @@ const HistoryCardSkeleton: FC = () => (
   </div>
 );
 
-export const History: FC = () => {
+export const History: FC<HistoryProps> = ({ onOpenCandidate }) => {
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,12 +53,6 @@ export const History: FC = () => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<HistoryFilter>('All');
   const [sort, setSort] = useState<HistorySort>('newest');
-
-  // Report modal state
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalReport, setModalReport] = useState<AnalysisReport | null>(null);
-  const [modalLoading, setModalLoading] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
 
   // Confirmation state
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -103,28 +100,6 @@ export const History: FC = () => {
     });
   }, [records, search, filter, sort]);
 
-  const openReport = async (id: number) => {
-    setModalOpen(true);
-    setModalReport(null);
-    setModalError(null);
-    setModalLoading(true);
-    try {
-      const report = await fetchHistoryReport(id);
-      setModalReport(report);
-    } catch (err: any) {
-      console.error(err);
-      setModalError('Failed to load this report.');
-    } finally {
-      setModalLoading(false);
-    }
-  };
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setModalReport(null);
-    setModalError(null);
-  };
-
   const confirmAction = async () => {
     if (!pending) return;
     const action = pending;
@@ -155,7 +130,7 @@ export const History: FC = () => {
     <div className="space-y-8 animate-fadeIn">
       <PageHeader
         title="Analysis History"
-        description="Every evaluation the platform has produced. Open any record to revisit its full explainable report."
+        description="Every evaluation the platform has produced. Open any record to view the full candidate profile."
         actions={
           <Button
             variant="secondary"
@@ -207,20 +182,12 @@ export const History: FC = () => {
             <HistoryCard
               key={r.id}
               record={r}
-              onOpen={openReport}
+              onOpen={onOpenCandidate}
               onDelete={(record) => setPending({ kind: 'delete', record })}
             />
           ))}
         </div>
       )}
-
-      <ReportModal
-        open={modalOpen}
-        loading={modalLoading}
-        error={modalError}
-        report={modalReport}
-        onClose={closeModal}
-      />
 
       <ConfirmDialog
         open={pending !== null}

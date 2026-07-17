@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import { LayoutDashboard, FileUp, Briefcase, Sparkles, Clock, Settings2 } from 'lucide-react';
 
-export type PageId = 'dashboard' | 'resume' | 'job' | 'analysis' | 'history' | 'status';
+export type PageId = 'dashboard' | 'resume' | 'job' | 'analysis' | 'history' | 'profile' | 'status';
 
 export interface NavItem {
   id: PageId;
@@ -41,5 +41,6 @@ export const PAGE_TITLES: Record<PageId, string> = {
   job: 'Job Descriptions',
   analysis: 'AI Analysis',
   history: 'Analysis History',
+  profile: 'Candidate Profile',
   status: 'System Status',
 };

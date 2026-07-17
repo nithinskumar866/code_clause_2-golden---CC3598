@@ -3,15 +3,18 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { PAGE_TITLES } from './components/layout/navConfig';
 import type { PageId } from './components/layout/navConfig';
+import type { HistoryRecord } from './types';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { ResumeUpload } from './pages/Resume/ResumeUpload';
 import { JobUpload } from './pages/Job/JobUpload';
 import { Analysis } from './pages/Analysis/Analysis';
 import { History } from './pages/History/History';
+import { CandidateProfile } from './pages/CandidateProfile/CandidateProfile';
 import { SystemStatus } from './pages/SystemStatus/SystemStatus';
 
 const App: FC = () => {
   const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
+  const [selectedCandidate, setSelectedCandidate] = useState<HistoryRecord | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Escape closes the mobile navigation drawer.
@@ -28,6 +31,15 @@ const App: FC = () => {
     setSidebarOpen(false);
   };
 
+  const openCandidate = (record: HistoryRecord) => {
+    setSelectedCandidate(record);
+    setCurrentPage('profile');
+    setSidebarOpen(false);
+  };
+
+  // Keep History highlighted in the sidebar while viewing a candidate profile.
+  const navHighlight: PageId = currentPage === 'profile' ? 'history' : currentPage;
+
   const renderContent = () => {
     switch (currentPage) {
       case 'dashboard':
@@ -39,7 +51,13 @@ const App: FC = () => {
       case 'analysis':
         return <Analysis />;
       case 'history':
-        return <History />;
+        return <History onOpenCandidate={openCandidate} />;
+      case 'profile':
+        return selectedCandidate ? (
+          <CandidateProfile record={selectedCandidate} onBack={() => navigate('history')} />
+        ) : (
+          <History onOpenCandidate={openCandidate} />
+        );
       case 'status':
         return <SystemStatus />;
       default:
@@ -66,7 +84,7 @@ const App: FC = () => {
       )}
 
       <Sidebar
-        current={currentPage}
+        current={navHighlight}
         onNavigate={navigate}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
