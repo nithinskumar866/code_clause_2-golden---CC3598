@@ -89,3 +89,13 @@ LEARNING_TRANSFER_BANDS = [
 
 # Learning effort for a partially-evidenced skill (listed but not demonstrated).
 PARTIAL_SKILL_LEARNING_TIME = "2-4 days"
+
+# Score distribution bands for dashboard analytics.
+# Inclusive ranges over overall_score (0-100). Each entry: (label, min, max).
+SCORE_DISTRIBUTION_BANDS = [
+    ("0-20", 0, 20),
+    ("21-40", 21, 40),
+    ("41-60", 41, 60),
+    ("61-80", 61, 80),
+    ("81-100", 81, 100),
+]

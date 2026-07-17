@@ -43,6 +43,13 @@ class Settings:
     # as "Missing" rather than a weak "Partial" backed by an unrelated chunk.
     RETRIEVAL_MIN_SIMILARITY: float = float(os.getenv("RETRIEVAL_MIN_SIMILARITY", "0.30"))
 
+    # Dashboard analytics decision buckets (over overall_score 0-100).
+    # Selected: score >= SELECTED_MIN; Rejected: score < BORDERLINE_MIN;
+    # Borderline: everything in between. Trends window is DASHBOARD_TRENDS_DAYS days.
+    DASHBOARD_SELECTED_MIN: int = int(os.getenv("DASHBOARD_SELECTED_MIN", "80"))
+    DASHBOARD_BORDERLINE_MIN: int = int(os.getenv("DASHBOARD_BORDERLINE_MIN", "60"))
+    DASHBOARD_TRENDS_DAYS: int = int(os.getenv("DASHBOARD_TRENDS_DAYS", "30"))
+
     # Skill-semantics reasoning (category classification + transferability)
     # Minimum centroid cosine similarity to accept a category; below this a
     # requirement is treated as an unknown/general skill.
