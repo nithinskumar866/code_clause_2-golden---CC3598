@@ -1,13 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, FileText, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import axios from 'axios';
-
-interface UploadResult {
-  id: number;
-  filename: string;
-  upload_time: string;
-  status: string;
-}
+import type { UploadResult } from '../../types';
 
 export const ResumeUpload: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
