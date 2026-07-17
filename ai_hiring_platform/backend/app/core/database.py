@@ -30,6 +30,10 @@ def get_db():
 _ANALYSES_ADDED_COLUMNS = {
     "workflow_status": "ALTER TABLE analyses ADD COLUMN workflow_status VARCHAR NOT NULL DEFAULT 'Applied'",
     "overall_score": "ALTER TABLE analyses ADD COLUMN overall_score INTEGER",
+    "coverage_score": "ALTER TABLE analyses ADD COLUMN coverage_score INTEGER",
+    "experience_score": "ALTER TABLE analyses ADD COLUMN experience_score INTEGER",
+    "project_score": "ALTER TABLE analyses ADD COLUMN project_score INTEGER",
+    "quality_score": "ALTER TABLE analyses ADD COLUMN quality_score INTEGER",
 }
 
 

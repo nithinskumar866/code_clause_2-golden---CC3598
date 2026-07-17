@@ -88,21 +88,26 @@ def _row_to_item(row) -> AnalysisHistoryItem:
 
 def sync_history_scores(db: Session) -> None:
     """
-    Backfill Analysis.overall_score from persisted report files for any completed
-    analysis that has not been denormalized yet. Idempotent: only NULL rows are
-    touched, so this is a no-op once caught up. This is what keeps the evaluation
-    pipeline untouched while still enabling SQL-native score filtering.
+    Backfill the denormalized Analysis score columns (overall + sub-scores) from
+    persisted report files for any completed analysis not yet denormalized.
+    Idempotent: only rows with a NULL overall_score are touched, so this is a
+    no-op once caught up. Keeps the evaluation pipeline untouched while enabling
+    SQL-native score filtering and aggregation.
     """
     pending = db.query(Analysis).filter(Analysis.overall_score.is_(None)).all()
     updated = 0
     for analysis in pending:
         report = _load_report(analysis.id)
         if report and report.get("overall_score") is not None:
-            analysis.overall_score = int(report["overall_score"])
+            analysis.overall_score = int(report.get("overall_score") or 0)
+            analysis.coverage_score = int(report.get("coverage_score") or 0)
+            analysis.experience_score = int(report.get("experience_score") or 0)
+            analysis.project_score = int(report.get("project_score") or 0)
+            analysis.quality_score = int(report.get("quality_score") or 0)
             updated += 1
     if updated:
         db.commit()
-        logger.info(f"Backfilled overall_score for {updated} analyses.")
+        logger.info(f"Backfilled denormalized scores for {updated} analyses.")
 
 
 def _empty_filters() -> dict:

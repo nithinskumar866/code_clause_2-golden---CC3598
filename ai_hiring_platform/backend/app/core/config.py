@@ -50,6 +50,16 @@ class Settings:
     DASHBOARD_BORDERLINE_MIN: int = int(os.getenv("DASHBOARD_BORDERLINE_MIN", "60"))
     DASHBOARD_TRENDS_DAYS: int = int(os.getenv("DASHBOARD_TRENDS_DAYS", "30"))
 
+    # Analytics windows/limits and optional result cache.
+    ANALYTICS_DAILY_DAYS: int = int(os.getenv("ANALYTICS_DAILY_DAYS", "30"))
+    ANALYTICS_WEEKLY_WEEKS: int = int(os.getenv("ANALYTICS_WEEKLY_WEEKS", "12"))
+    ANALYTICS_MONTHLY_MONTHS: int = int(os.getenv("ANALYTICS_MONTHLY_MONTHS", "12"))
+    ANALYTICS_TOP_LIMIT: int = int(os.getenv("ANALYTICS_TOP_LIMIT", "5"))
+    ANALYTICS_RECENT_LIMIT: int = int(os.getenv("ANALYTICS_RECENT_LIMIT", "10"))
+    # Seconds to cache analytics aggregates across requests. 0 disables caching
+    # (default) so results are always fresh; set >0 in single-DB deployments.
+    ANALYTICS_CACHE_TTL_SECONDS: int = int(os.getenv("ANALYTICS_CACHE_TTL_SECONDS", "0"))
+
     # Skill-semantics reasoning (category classification + transferability)
     # Minimum centroid cosine similarity to accept a category; below this a
     # requirement is treated as an unknown/general skill.

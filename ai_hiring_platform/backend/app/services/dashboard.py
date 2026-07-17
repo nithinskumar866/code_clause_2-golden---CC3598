@@ -1,13 +1,12 @@
 from datetime import datetime, timedelta
-from typing import List
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.constants import SCORE_DISTRIBUTION_BANDS
 from app.core.logging import logger
-from app.services import analysis as history_service
-from app.schemas.analysis import AnalysisHistoryItem
+from app.repositories import analytics_repository
+from app.services import analytics as analytics_service
+from app.services.analysis import sync_history_scores
 from app.schemas.dashboard import (
     DashboardOverview,
     DashboardTrends,
@@ -17,79 +16,56 @@ from app.schemas.dashboard import (
 )
 
 # ---------------------------------------------------------------------------
-# Dashboard analytics service.
+# Dashboard service.
 #
-# Read-only aggregation over the existing Analysis History (completed
-# evaluations only). It reuses history_service.list_history so there is a single
-# source of truth and no duplicated persistence access. The evaluation pipeline
-# and LangGraph workflow are not involved.
+# The dashboard's calculations are delegated to the analytics service/repository
+# (SQL aggregation) so there is a single source of truth and no duplicated
+# calculation logic. This module only adapts analytics results into the existing
+# dashboard response shapes, which remain unchanged.
 # ---------------------------------------------------------------------------
 
 
-def _mean(values: List[int], total: int) -> float:
-    """Rounded mean, guarding against an empty history (returns 0.0)."""
-    return round(sum(values) / total, 2) if total else 0.0
-
-
 def get_overview(db: Session) -> DashboardOverview:
-    """Aggregate counts and average sub-scores across all completed analyses."""
-    items: List[AnalysisHistoryItem] = history_service.list_history(db)
-    total = len(items)
-
-    selected = sum(1 for i in items if i.overall_score >= settings.DASHBOARD_SELECTED_MIN)
-    rejected = sum(1 for i in items if i.overall_score < settings.DASHBOARD_BORDERLINE_MIN)
-    borderline = total - selected - rejected
-
+    """Counts and average sub-scores (delegated to analytics)."""
+    stats = analytics_service.get_overall_statistics(db)
     overview = DashboardOverview(
-        total_analyses=total,
-        selected_count=selected,
-        borderline_count=borderline,
-        rejected_count=rejected,
-        average_overall_score=_mean([i.overall_score for i in items], total),
-        average_skill_score=_mean([i.coverage_score for i in items], total),
-        average_experience_score=_mean([i.experience_score for i in items], total),
-        average_project_score=_mean([i.project_score for i in items], total),
-        average_quality_score=_mean([i.quality_score for i in items], total),
+        total_analyses=stats.total_analyses,
+        selected_count=stats.selected,
+        borderline_count=stats.borderline,
+        rejected_count=stats.rejected,
+        average_overall_score=stats.average_overall_score,
+        average_skill_score=stats.average_coverage_score,
+        average_experience_score=stats.average_experience_score,
+        average_project_score=stats.average_project_score,
+        average_quality_score=stats.average_quality_score,
     )
-    logger.info(f"Dashboard overview computed over {total} analyses.")
+    logger.info(f"Dashboard overview computed over {overview.total_analyses} analyses.")
     return overview
 
 
+def get_distribution(db: Session) -> DashboardDistribution:
+    """Score-band distribution (delegated to analytics)."""
+    dist = analytics_service.get_score_distribution(db)
+    return DashboardDistribution(
+        total_analyses=dist.total_analyses,
+        ranges=[ScoreRange(label=b.label, min=b.min, max=b.max, count=b.count) for b in dist.ranges],
+    )
+
+
 def get_trends(db: Session) -> DashboardTrends:
-    """Return per-day analysis counts over the last N days (zero-filled, oldest first)."""
+    """Per-day counts over the last N days, zero-filled (uses the analytics SQL grouping)."""
     days = settings.DASHBOARD_TRENDS_DAYS
-    items: List[AnalysisHistoryItem] = history_service.list_history(db)
+    sync_history_scores(db)
+    counts = dict(analytics_repository.daily_counts(db, days))  # {'YYYY-MM-DD': count}
 
     today = datetime.utcnow().date()
     start = today - timedelta(days=days - 1)
-
-    counts: dict = {}
-    for item in items:
-        day = item.timestamp.date()
-        if start <= day <= today:
-            counts[day] = counts.get(day, 0) + 1
-
     trends = [
-        TrendPoint(date=(start + timedelta(days=offset)).isoformat(),
-                   count=counts.get(start + timedelta(days=offset), 0))
+        TrendPoint(
+            date=(start + timedelta(days=offset)).isoformat(),
+            count=counts.get((start + timedelta(days=offset)).isoformat(), 0),
+        )
         for offset in range(days)
     ]
     logger.info(f"Dashboard trends computed for last {days} days ({sum(counts.values())} analyses in window).")
     return DashboardTrends(period_days=days, trends=trends)
-
-
-def get_distribution(db: Session) -> DashboardDistribution:
-    """Bucket completed analyses by overall_score into fixed score bands."""
-    items: List[AnalysisHistoryItem] = history_service.list_history(db)
-
-    ranges = [
-        ScoreRange(
-            label=label,
-            min=low,
-            max=high,
-            count=sum(1 for i in items if low <= i.overall_score <= high),
-        )
-        for label, low, high in SCORE_DISTRIBUTION_BANDS
-    ]
-    logger.info(f"Dashboard distribution computed over {len(items)} analyses.")
-    return DashboardDistribution(total_analyses=len(items), ranges=ranges)
