@@ -59,6 +59,7 @@ def _build_item(
         job_description_id=analysis.jd_id,
         resume_filename=resume.filename if resume else "",
         jd_filename=jd.filename if jd else "",
+        workflow_status=getattr(analysis, "workflow_status", None) or "Applied",
         overall_score=report.get("overall_score", 0),
         coverage_score=report.get("coverage_score", 0),
         experience_score=report.get("experience_score", 0),

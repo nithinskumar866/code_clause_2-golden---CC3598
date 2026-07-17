@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.database import init_db
 from app.core.exceptions import register_exception_handlers
-from app.api.v1.routers import health, resume, job, analysis, dashboard, notes
+from app.api.v1.routers import health, resume, job, analysis, dashboard, notes, workflow
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,6 +43,8 @@ app.include_router(analysis.router, prefix=f"{settings.API_V1_STR}/analysis", ta
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["Dashboard"])
 # Notes routes span /analysis/{id}/notes and /notes/{id}, so mount at the API root.
 app.include_router(notes.router, prefix=settings.API_V1_STR, tags=["Notes"])
+# Workflow status routes live under /analysis/{id}/status, so mount at the API root.
+app.include_router(workflow.router, prefix=settings.API_V1_STR, tags=["Workflow Status"])
 
 @app.get("/")
 def read_root():

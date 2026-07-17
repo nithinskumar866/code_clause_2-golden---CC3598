@@ -33,7 +33,9 @@ class Analysis(Base):
     id = Column(Integer, primary_key=True, index=True)
     resume_id = Column(Integer, ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
     jd_id = Column(Integer, ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False)
-    status = Column(String, default="Uploaded", nullable=False)  # Status: Uploaded, Indexed, Analysed, Failed
+    status = Column(String, default="Uploaded", nullable=False)  # Pipeline: Uploaded, Indexed, Analysed, Failed
+    # Candidate hiring workflow stage (distinct from the pipeline status above).
+    workflow_status = Column(String, default="Applied", server_default="Applied", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
