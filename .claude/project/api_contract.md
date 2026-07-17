@@ -34,8 +34,21 @@ strengths, weaknesses, skill_relationships, missing_skills, interview_questions 
 learning_roadmap : LearningRoadmapItem[]
 recruiter_recommendation : string
 rejection_email : string | null
+authenticity : AuthenticityAssessment | null
 ```
-`RequirementFit`: `{ requirement, category, status ("Matched"|"Partial"|"Missing"), matched_evidence, explanation, limitations, confidence(0-100) }`
+`AuthenticityAssessment` (keyword-stuffing / over-claim detection, deterministic):
+```
+credibility_score : int (0-100)          # corroboration expressed 0-100
+keyword_stuffing_risk : "Low"|"Medium"|"High"
+over_claimed_skills : string[]           # listed but never demonstrated
+corroboration_ratio : float (0.0-1.0)    # demonstrated / claimed
+explanation : string
+```
+Note: `quality_score` is **no longer a constant** — it is now derived deterministically from
+evidence corroboration + depth (was hardcoded `85`). `authenticity` is nullable so reports
+persisted before this field still validate (e.g. on export).
+`RequirementFit`: `{ requirement, category, status ("Matched"|"Partial"|"Missing"), matched_evidence, explanation, limitations, confidence(0-100), importance ("must"|"nice"|null), weight (float|null) }`
+`importance`/`weight` are derived from the JD wording (must-have vs nice-to-have); `coverage_score` is importance-weighted so missing must-haves cost more. Nullable for backward-compat.
 `LearningRoadmapItem`: `{ skill, estimated_time, reason }`
 
 ## Known contract gap (frontend TODO)

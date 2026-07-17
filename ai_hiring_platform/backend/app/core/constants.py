@@ -42,8 +42,11 @@ CANDIDATE_WORKFLOW_STATUSES = [
 ]
 DEFAULT_WORKFLOW_STATUS = "Applied"
 
-# Predefined Software Engineering Keyword Taxonomy
-# For extracting job requirements from Job Descriptions in jd_requirement_extractor.py
+# Predefined Software Engineering Keyword Taxonomy.
+# Used as the PRECISION layer of jd_requirement_extractor (known-tech match) and as
+# the centroid basis for skill_semantics category classification. It is NOT the sole
+# source of requirements — the extractor also pulls unknown skills/soft-skills/domain/
+# seniority from JD text via grammar cues, so evaluation generalizes to any JD.
 TECH_TAXONOMY = {
     "Languages": [
         "python", "javascript", "typescript", "java", "c++", "c#", "go", "golang", "rust", "ruby", "php", "swift", "kotlin", "scala"

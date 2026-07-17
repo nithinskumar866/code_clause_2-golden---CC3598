@@ -10,10 +10,16 @@ class Settings:
     PROJECT_NAME: str = "AI Hiring Intelligence Platform"
     API_V1_STR: str = "/api/v1"
     
-    # LLM configurations
+    # LLM configurations — provider/model-agnostic. Switching provider or model is a
+    # config change only (never code). See services/ai/llm_service.py.
+    #   LLM_PROVIDER: openai | anthropic | google (aliases: gemini, claude)
+    #   LLM_MODEL:    explicit model id; blank -> a sensible per-provider default
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    # Accept either GOOGLE_API_KEY or GEMINI_API_KEY for the Google Gemini provider.
+    GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'hiring_platform.db')}")
@@ -67,6 +73,23 @@ class Settings:
     # Bonus added to a transfer score when the missing skill and the candidate's
     # related skill fall in the same category (reflects strong conceptual overlap).
     TRANSFER_SAME_CATEGORY_BOOST: float = 0.10
+
+    # --- Authenticity / keyword-stuffing detection (deterministic) ---
+    # A claimed skill is "over-claimed" when it appears only in listing sections
+    # (Skills/Summary) with no supporting Experience/Project evidence. Risk bands
+    # are keyed on the fraction of claimed skills that are over-claimed.
+    STUFFING_MEDIUM_FRACTION: float = float(os.getenv("STUFFING_MEDIUM_FRACTION", "0.25"))
+    STUFFING_HIGH_FRACTION: float = float(os.getenv("STUFFING_HIGH_FRACTION", "0.50"))
+    # Resume quality_score blend: how well claims are substantiated (corroboration)
+    # vs. how detailed the demonstrating evidence is (depth). Must sum to 1.0.
+    QUALITY_WEIGHT_CORROBORATION: float = 0.60
+    QUALITY_WEIGHT_DEPTH: float = 0.40
+
+    # --- Requirement prioritization (must-have vs nice-to-have) ---
+    # Coverage scoring weights each requirement by how essential the JD makes it,
+    # so missing a must-have costs far more than missing a nice-to-have.
+    REQUIREMENT_WEIGHT_MUST: float = 1.0
+    REQUIREMENT_WEIGHT_NICE: float = float(os.getenv("REQUIREMENT_WEIGHT_NICE", "0.4"))
 
 settings = Settings()
 

@@ -28,11 +28,24 @@ class RequirementFit(BaseModel):
     explanation: str = Field(..., description="Short explanation of why this evidence matters")
     limitations: str = Field(..., description="What competency was missing, weak, or undocumented for this requirement")
     confidence: int = Field(..., description="Calculated confidence level between 0 and 100 for this claim")
+    importance: Optional[str] = Field(None, description="'must' or 'nice' — whether the JD lists this as required or nice-to-have")
+    weight: Optional[float] = Field(None, description="Scoring weight derived from importance (must-haves weigh more)")
 
 class LearningRoadmapItem(BaseModel):
     skill: str = Field(..., description="Name of the missing skill")
     estimated_time: str = Field(..., description="Realistic dynamic upskilling learning time, e.g. '5-7 days'")
     reason: str = Field(..., description="Transferable skill and dependency reasoning context")
+
+class AuthenticityAssessment(BaseModel):
+    """Deterministic credibility signal: how well claimed skills are corroborated by
+    concrete Experience/Project evidence, and whether the resume shows keyword stuffing
+    (skills listed but never demonstrated). Computed algorithmically from retrieved
+    evidence sections — never delegated to the LLM."""
+    credibility_score: int = Field(..., description="Corroboration expressed 0-100: share of claimed skills demonstrated in narrative sections")
+    keyword_stuffing_risk: str = Field(..., description="Low, Medium, or High — based on the fraction of claimed skills that are listed but not demonstrated")
+    over_claimed_skills: List[str] = Field(..., description="Skills the candidate lists but never demonstrates in Experience/Projects")
+    corroboration_ratio: float = Field(..., description="Demonstrated claimed skills / total claimed skills (0.0-1.0)")
+    explanation: str = Field(..., description="Recruiter-readable rationale for the credibility verdict")
 
 class HiringReport(BaseModel):
     # Algorithmic Scores
@@ -57,6 +70,10 @@ class HiringReport(BaseModel):
     
     recruiter_recommendation: str = Field(..., description="Overall hiring process recommendation, e.g., Proceed to Interview")
     rejection_email: Optional[str] = Field(None, description="Polite dynamic rejection email draft if compatibility is low")
+
+    # Deterministic authenticity signal (keyword-stuffing / over-claim detection).
+    # Optional so historical reports persisted before this field validate as None.
+    authenticity: Optional[AuthenticityAssessment] = Field(None, description="Credibility assessment: corroboration of claims + keyword-stuffing risk")
 
 # --- Analysis History Schemas ---
 # History is a read/manage view over already-persisted evaluations (the Analysis

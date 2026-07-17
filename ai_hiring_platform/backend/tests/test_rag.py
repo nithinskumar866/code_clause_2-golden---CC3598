@@ -74,10 +74,43 @@ def test_jd_requirement_extractor(generate_sample_files):
     jd_text = parse_docx(docx_path)
     
     requirements = extract_requirements(jd_text)
-    
+
     # python and tensorflow are in taxonomy and present in text
     assert "python" in requirements
     assert "tensorflow" in requirements
+
+
+def test_jd_extractor_generalizes_beyond_taxonomy():
+    """Requirements outside the known taxonomy (tools, domain, soft skills, seniority)
+    must now be extracted deterministically — the core RAG generalization fix."""
+    jd = (
+        "Requirements:\n"
+        "- 5+ years of experience with data pipelines\n"
+        "- Strong proficiency in Snowflake and Apache Airflow\n"
+        "- Experience with stakeholder management\n"
+        "- Familiarity with Terraform\n"
+    )
+    reqs = [r.lower() for r in extract_requirements(jd)]
+
+    assert "terraform" in reqs                     # known taxonomy term still found
+    assert "snowflake" in reqs                      # unknown tool, previously invisible
+    assert "apache airflow" in reqs                 # unknown multi-word tool
+    assert "stakeholder management" in reqs         # soft/domain requirement
+    assert any("year" in r for r in reqs)           # seniority requirement captured
+    # cue words themselves must never become requirements
+    assert "familiarity" not in reqs
+    assert "experience" not in reqs
+
+
+def test_technical_specificity_is_generic():
+    """The tech-specificity ranking signal generalizes (no hardcoded keyword list):
+    a tech-dense chunk scores higher than prose, including for unseen technologies."""
+    from app.services.ai.retrieval_service import _technical_specificity
+
+    techy = _technical_specificity("Built ETL on Snowflake and Airflow with dbt models and S3.")
+    prose = _technical_specificity("Collaborated closely with the team to deliver on time.")
+    assert techy > prose
+    assert 0 <= prose <= 100 and 0 <= techy <= 100
 
 def test_vector_store_and_retrieval(generate_sample_files):
     pdf_path, _ = generate_sample_files
