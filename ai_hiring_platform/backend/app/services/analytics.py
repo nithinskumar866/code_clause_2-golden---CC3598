@@ -1,10 +1,14 @@
+import os
+import json
+import glob
 import time
+from collections import Counter
 from typing import Callable
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.constants import SCORE_DISTRIBUTION_BANDS
+from app.core.constants import SCORE_DISTRIBUTION_BANDS, REPORT_DIR
 from app.core.logging import logger
 from app.repositories import analytics_repository as repo
 from app.services.analysis import sync_history_scores
@@ -18,6 +22,8 @@ from app.schemas.analytics import (
     TrendData,
     TopItem,
     RecentAnalysisItem,
+    SkillCount,
+    SkillFrequency,
 )
 
 # ---------------------------------------------------------------------------
@@ -144,6 +150,40 @@ def get_top_resumes(db: Session, limit: int) -> list:
 def get_top_job_descriptions(db: Session, limit: int) -> list:
     sync_history_scores(db)
     return [TopItem(name=name, count=count) for name, count in repo.top_job_descriptions(db, limit)]
+
+
+def get_skill_frequency(db: Session, limit: int) -> SkillFrequency:
+    """Aggregate matched requirements and missing skills across every stored report.
+
+    Reads the persisted `analysis_<id>.json` files (the source of truth for the full
+    report) and tallies frequencies — this is the one analytic that needs report
+    bodies, not just the denormalized score columns. Corrupt/absent files are skipped.
+    """
+    def _compute():
+        matched: Counter = Counter()
+        missing: Counter = Counter()
+        for path in glob.glob(os.path.join(REPORT_DIR, "analysis_*.json")):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    report = json.load(f)
+            except Exception:
+                continue
+            for skill in report.get("missing_skills", []) or []:
+                key = str(skill).strip()
+                if key:
+                    missing[key] += 1
+            for req in report.get("requirements", []) or []:
+                if req.get("status") == "Matched":
+                    key = str(req.get("requirement", "")).strip()
+                    if key:
+                        matched[key] += 1
+
+        def _top(counter: Counter) -> list:
+            return [SkillCount(skill=k, count=c) for k, c in counter.most_common(limit)]
+
+        return SkillFrequency(top_matched=_top(matched), top_missing=_top(missing))
+
+    return _cached(f"skill_frequency_{limit}", _compute)
 
 
 def get_recent_activity(db: Session, limit: int) -> list:

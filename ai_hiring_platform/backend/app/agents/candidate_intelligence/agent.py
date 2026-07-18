@@ -28,12 +28,16 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
         Orchestrates resume ingestion: reads file, sections it semantically,
         generates local embeddings, and persists FAISS index to disk.
         """
-        if vector_store_service.has_existing_index(resume_id):
-            logger.info(f"Resume ID {resume_id} already has a persisted vector index. Skipping ingestion.")
+        # Content-address the cache: only reuse the persisted index if it was built
+        # from THIS exact file. Guards against a resume_id colliding with a stale
+        # on-disk index (e.g. after a DB reset) and evaluating the wrong candidate.
+        fingerprint = vector_store_service.compute_fingerprint(resume_path)
+        if vector_store_service.has_valid_index(resume_id, fingerprint):
+            logger.info(f"Resume ID {resume_id} already has a valid up-to-date vector index. Skipping ingestion.")
             return
 
         logger.info(f"Starting ingestion process for Resume ID: {resume_id}, path: {resume_path}")
-        
+
         # 1. Load document text
         raw_text = document_loader.load_document(resume_path)
         
@@ -49,9 +53,9 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
         
         # 3. Generate embeddings for Nodes
         nodes_embedded = embedding_service.generate_embeddings_for_nodes(nodes)
-        
-        # 4. Save to FAISS vector index
-        vector_store_service.save_nodes_to_index(nodes_embedded, resume_id)
+
+        # 4. Save to FAISS vector index (fingerprinted to this exact source file)
+        vector_store_service.save_nodes_to_index(nodes_embedded, resume_id, fingerprint=fingerprint)
         logger.info(f"Ingestion process finished for Resume ID: {resume_id}")
 
     def retrieve_evidence(
@@ -68,9 +72,12 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
         """
         logger.info(f"Orchestrating evidence retrieval: Resume ID {resume_id}, JD ID {jd_id}, Analysis ID {analysis_id}")
         
-        # Self-healing index load
-        if not vector_store_service.has_existing_index(resume_id):
-            logger.info(f"Index not found for Resume ID {resume_id}. Executing ingestion pipeline first...")
+        # Self-healing index load: rebuild if missing OR if the persisted index was
+        # built from a different file than the one we're evaluating now.
+        if not vector_store_service.has_valid_index(
+            resume_id, vector_store_service.compute_fingerprint(resume_path)
+        ):
+            logger.info(f"No valid up-to-date index for Resume ID {resume_id}. Running ingestion first...")
             self.ingest_candidate_resume(resume_path, resume_id)
             
         # 1. Load FAISS index

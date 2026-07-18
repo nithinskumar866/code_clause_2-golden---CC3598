@@ -97,6 +97,56 @@ def classify_category(requirement: str) -> str:
         return FALLBACK_CATEGORY
 
 
+def find_related_skill(
+    requirement: str,
+    candidate_skills: List[str],
+    exclude: Optional[set] = None,
+) -> Tuple[str, float, str]:
+    """
+    Find the candidate skill most semantically related to a requirement and label
+    the relationship, using raw cosine (no category boost, so only true synonyms
+    qualify as 'equivalent'):
+
+      * 'equivalent' (cos >= SKILL_EQUIVALENCE_MIN) - practically the same skill,
+        e.g. SQL vs MySQL. Enough to consider the requirement satisfied.
+      * 'related'    (cos >= SKILL_RELATED_MIN)     - adjacent skill that eases
+        ramp-up, e.g. Docker vs Kubernetes. NOT a claim that the skill is held.
+      * 'none'                                       - no meaningful relationship.
+
+    Returns (best_skill, cosine, relation). `exclude` names (lowercased) are skipped
+    so a requirement never matches its own mention.
+    """
+    if not requirement or not candidate_skills:
+        return "", 0.0, "none"
+    exclude = {e.lower() for e in (exclude or set())}
+    try:
+        req_vec = _embed(requirement)
+        req_cat = classify_category(requirement)
+        # Track the best overall match (for equivalence, where raw cosine ~0.8+ is
+        # discriminative on its own) and the best SAME-CATEGORY match (for the softer
+        # 'related' claim, where a category gate prevents cross-domain false positives
+        # like Azure≈SQL that a bare cosine threshold would wrongly accept).
+        best_skill, best_cos = "", 0.0
+        best_same_skill, best_same_cos = "", 0.0
+        for skill in candidate_skills:
+            if not skill or skill.lower() in exclude or skill.lower() == requirement.lower():
+                continue
+            cos = _cosine(req_vec, _embed(skill))
+            if cos > best_cos:
+                best_skill, best_cos = skill, cos
+            if cos > best_same_cos and classify_category(skill) == req_cat:
+                best_same_skill, best_same_cos = skill, cos
+
+        if best_cos >= settings.SKILL_EQUIVALENCE_MIN:
+            return best_skill, round(best_cos, 3), "equivalent"
+        if best_same_cos >= settings.SKILL_RELATED_MIN:
+            return best_same_skill, round(best_same_cos, 3), "related"
+        return best_skill, round(best_cos, 3), "none"
+    except Exception as e:
+        logger.error(f"Relationship lookup failed for '{requirement}': {e}", exc_info=True)
+        return "", 0.0, "none"
+
+
 def estimate_transfer(
     missing_requirement: str,
     candidate_skills: List[str],

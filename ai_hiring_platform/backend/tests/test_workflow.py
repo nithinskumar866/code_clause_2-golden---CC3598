@@ -86,18 +86,21 @@ def test_get_status_not_found(client, db_session):
 
 def test_patch_status_updates_and_persists(client, db_session):
     aid = _seed_analysis(db_session)
-    response = client.patch(f"/api/v1/analysis/{aid}/status", json={"workflow_status": "Technical"})
+    response = client.patch(f"/api/v1/analysis/{aid}/status", json={"workflow_status": "Interview Scheduled"})
     assert response.status_code == 200
-    assert response.json()["data"]["workflow_status"] == "Technical"
+    assert response.json()["data"]["workflow_status"] == "Interview Scheduled"
 
     # Persisted across a fresh read
     again = client.get(f"/api/v1/analysis/{aid}/status")
-    assert again.json()["data"]["workflow_status"] == "Technical"
+    assert again.json()["data"]["workflow_status"] == "Interview Scheduled"
 
 
 def test_patch_all_valid_statuses(client, db_session):
     aid = _seed_analysis(db_session)
-    for status in ["Applied", "Screening", "Technical", "Manager", "HR", "Offer", "Joined", "Rejected"]:
+    for status in [
+        "Applied", "Screening", "Reviewed", "Interview Scheduled",
+        "Interview Completed", "Selected", "Rejected", "Offer Sent",
+    ]:
         response = client.patch(f"/api/v1/analysis/{aid}/status", json={"workflow_status": status})
         assert response.status_code == 200
         assert response.json()["data"]["workflow_status"] == status
@@ -110,7 +113,7 @@ def test_patch_invalid_status_rejected(client, db_session):
 
 
 def test_patch_status_not_found(client, db_session):
-    response = client.patch("/api/v1/analysis/999999/status", json={"workflow_status": "Offer"})
+    response = client.patch("/api/v1/analysis/999999/status", json={"workflow_status": "Offer Sent"})
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "NOT_FOUND"
 
@@ -120,15 +123,15 @@ def test_patch_status_not_found(client, db_session):
 def test_history_preserves_status(client, db_session, clean_reports):
     aid = _seed_analysis(db_session)
     _write_report_file(aid)  # makes it a completed, history-visible analysis
-    client.patch(f"/api/v1/analysis/{aid}/status", json={"workflow_status": "Offer"})
+    client.patch(f"/api/v1/analysis/{aid}/status", json={"workflow_status": "Offer Sent"})
 
     detail = client.get(f"/api/v1/analysis/history/{aid}")
     assert detail.status_code == 200
-    assert detail.json()["data"]["workflow_status"] == "Offer"
+    assert detail.json()["data"]["workflow_status"] == "Offer Sent"
 
     listing = client.get("/api/v1/analysis/history").json()["data"]
     item = next(i for i in listing if i["analysis_id"] == aid)
-    assert item["workflow_status"] == "Offer"
+    assert item["workflow_status"] == "Offer Sent"
 
 
 # --------------------------- Additive migration ----------------------------

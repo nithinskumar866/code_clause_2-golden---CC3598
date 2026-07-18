@@ -63,3 +63,15 @@ class RecentAnalysisItem(BaseModel):
     overall_score: Optional[int] = None
     recommendation: str
     workflow_status: str
+
+
+class SkillCount(BaseModel):
+    skill: str
+    count: int
+
+
+class SkillFrequency(BaseModel):
+    """Aggregated skill signal across all stored reports: which requirements are
+    most often matched, and which skills are most often missing (the hiring gap)."""
+    top_matched: List[SkillCount] = Field(default_factory=list, description="Most frequently matched requirements")
+    top_missing: List[SkillCount] = Field(default_factory=list, description="Most frequently missing skills")

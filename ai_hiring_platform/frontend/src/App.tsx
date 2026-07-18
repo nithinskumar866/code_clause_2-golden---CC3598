@@ -9,13 +9,15 @@ import { Dashboard } from './pages/Dashboard/Dashboard';
 import { ResumeUpload } from './pages/Resume/ResumeUpload';
 import { JobUpload } from './pages/Job/JobUpload';
 import { Analysis } from './pages/Analysis/Analysis';
+import { Ranking } from './pages/Ranking/Ranking';
 import { History } from './pages/History/History';
 import { CandidateProfile } from './pages/CandidateProfile/CandidateProfile';
+import { Analytics } from './pages/Analytics/Analytics';
 import { SystemStatus } from './pages/SystemStatus/SystemStatus';
 
 // Pages that can be restored from the URL `view` param (profile needs a
 // selected record, so it is not URL-restorable and is omitted here).
-const VIEW_PAGES: PageId[] = ['dashboard', 'resume', 'job', 'analysis', 'history', 'status'];
+const VIEW_PAGES: PageId[] = ['dashboard', 'resume', 'job', 'analysis', 'ranking', 'history', 'analytics', 'status'];
 
 const readView = (): PageId => {
   const v = new URLSearchParams(window.location.search).get('view') as PageId | null;
@@ -71,6 +73,10 @@ const App: FC = () => {
         return <JobUpload />;
       case 'analysis':
         return <Analysis />;
+      case 'ranking':
+        return <Ranking />;
+      case 'analytics':
+        return <Analytics />;
       case 'history':
         return <History onOpenCandidate={openCandidate} />;
       case 'profile':

@@ -227,7 +227,7 @@ cd ai_hiring_platform/frontend
 npm run build      # tsc -b && vite build
 npm run lint       # oxlint
 ```
-Baseline: **11 tests pass**, **build exit 0**. First backend run is slow (BGE load).
+Baseline: **120 tests pass**, **build exit 0**. First backend run is slow (BGE load).
 
 ---
 

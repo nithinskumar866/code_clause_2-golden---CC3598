@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
-import axios from 'axios';
+import { api } from '../../api/client';
 import type { UploadResult } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Banner } from '../../components/ui/Banner';
@@ -75,7 +75,7 @@ export const JobUpload: React.FC = () => {
     formData.append('file', file);
 
     try {
-      const response = await axios.post('http://localhost:8000/api/v1/job/upload', formData, {
+      const response = await api.post('/job/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }

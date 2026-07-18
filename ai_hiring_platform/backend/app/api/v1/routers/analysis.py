@@ -1,99 +1,69 @@
-import os
 from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.constants import RESUME_UPLOAD_DIR, JOB_UPLOAD_DIR, STATUS_ANALYSED, STATUS_FAILED
+from app.core.constants import STATUS_ANALYSED
 from app.core.logging import logger
 from app.schemas.response import ApiResponse
 from app.schemas.analysis import AnalysisHistoryItem, AnalysisHistoryDetail
 from app.schemas.history import RecommendationFilter, HistorySort
-from app.models.database import Resume, JobDescription, Analysis
-from app.workflows.hiring_workflow import execute_hiring_pipeline
+from app.schemas.ranking import RankRequest, RankingResponse
+from app.schemas.interview import InterviewSimulation
 from app.services import analysis as history_service
+from app.services import ranking as ranking_service
+from app.services.ai import interview_service
 
 router = APIRouter()
 
 @router.post("/evaluate", response_model=ApiResponse[dict])
 def evaluate_candidate(resume_id: int, jd_id: int, db: Session = Depends(get_db)):
+    """Run the full LangGraph pipeline for one resume × one JD and return the report."""
     logger.info(f"LangGraph State Evaluation Pipeline triggered for Resume ID: {resume_id}, JD ID: {jd_id}")
-    
-    # 1. Fetch Resume and Job Description from database
-    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
-    if not db_resume:
-        logger.error(f"Resume ID {resume_id} not found in database.")
-        raise HTTPException(status_code=404, detail=f"Resume ID {resume_id} not found.")
-        
-    db_jd = db.query(JobDescription).filter(JobDescription.id == jd_id).first()
-    if not db_jd:
-        logger.error(f"Job Description ID {jd_id} not found in database.")
-        raise HTTPException(status_code=404, detail=f"Job Description ID {jd_id} not found.")
-        
-    # Reconstruct exact disk file paths
-    resume_path = os.path.join(RESUME_UPLOAD_DIR, f"{db_resume.id}_{db_resume.filename}")
-    jd_path = os.path.join(JOB_UPLOAD_DIR, f"{db_jd.id}_{db_jd.filename}")
-    
-    if not os.path.exists(resume_path):
-        logger.error(f"Resume file not found on disk: {resume_path}")
-        raise HTTPException(status_code=404, detail="Resume source document not found on disk.")
-        
-    if not os.path.exists(jd_path):
-        logger.error(f"Job Description file not found on disk: {jd_path}")
-        raise HTTPException(status_code=404, detail="Job Description source document not found on disk.")
-        
-    # 2. Check if an Analysis record already exists, or create a new one
-    db_analysis = db.query(Analysis).filter(
-        Analysis.resume_id == resume_id,
-        Analysis.jd_id == jd_id
-    ).first()
-    
-    if not db_analysis:
-        db_analysis = Analysis(resume_id=resume_id, jd_id=jd_id, status="Indexed")
-        db.add(db_analysis)
-        db.commit()
-        db.refresh(db_analysis)
-        
-    logger.info(f"Active Analysis Database Record ID: {db_analysis.id}")
-    
-    try:
-        # 3. Ingest, embed, index, retrieve, and evaluate sequentially using LangGraph
-        final_report = execute_hiring_pipeline(
-            resume_id=resume_id,
-            resume_path=resume_path,
-            jd_id=jd_id,
-            jd_path=jd_path,
-            analysis_id=db_analysis.id
-        )
-        
-        # 4. Update Analysis status in database
-        db_analysis.status = STATUS_ANALYSED
-        db.commit()
-        db.refresh(db_analysis)
-        
-        # Update Resume and JD status to show they are now indexed/processed
-        db_resume.status = "Indexed"
-        db_jd.status = "Indexed"
-        db.commit()
-        
-        return ApiResponse[dict](
-            success=True,
-            message="Candidate evaluation completed successfully via LangGraph workflow.",
-            data={
-                "analysis_id": db_analysis.id,
-                "status": db_analysis.status,
-                "report": final_report
-            }
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed during LangGraph workflow execution for ID {db_analysis.id}: {e}", exc_info=True)
-        db_analysis.status = STATUS_FAILED
-        db.commit()
-        raise HTTPException(
-            status_code=500,
-            detail=f"LangGraph Hiring State Pipeline failed: {str(e)}"
-        )
+    analysis_id, final_report = ranking_service.run_evaluation(db, resume_id, jd_id)
+    return ApiResponse[dict](
+        success=True,
+        message="Candidate evaluation completed successfully via LangGraph workflow.",
+        data={
+            "analysis_id": analysis_id,
+            "status": STATUS_ANALYSED,
+            "report": final_report,
+        },
+    )
+
+
+@router.post("/rank", response_model=ApiResponse[RankingResponse])
+def rank_candidates(payload: RankRequest, db: Session = Depends(get_db)):
+    """
+    Evaluate several resumes against a single JD and return a ranked leaderboard
+    (best overall score first). Reuses the same pipeline as /evaluate per resume,
+    so ranks are real explainable scores. Failed resumes are still listed.
+    """
+    logger.info(f"Ranking {len(payload.resume_ids)} resumes against JD ID {payload.jd_id}")
+    result = ranking_service.rank_candidates(db, payload.jd_id, payload.resume_ids)
+    return ApiResponse[RankingResponse](
+        success=True,
+        message=f"Ranked {result.evaluated_count} of {result.candidate_count} candidates.",
+        data=result,
+    )
+
+
+@router.post("/{analysis_id}/interview", response_model=ApiResponse[InterviewSimulation])
+def simulate_interview(analysis_id: int):
+    """
+    AI Recruiter: for a completed analysis, generate — for each interview question —
+    the ideal answer the candidate's resume can support, the supporting evidence,
+    a confidence score, missing information, follow-ups, and a recruiter verdict.
+    Uses the configured LLM (Gemini recommended) over the retrieved evidence, with
+    a deterministic fallback when no LLM is configured.
+    """
+    logger.info(f"AI Recruiter interview simulation requested for analysis {analysis_id}.")
+    result = interview_service.simulate_interview(analysis_id)
+    return ApiResponse[InterviewSimulation](
+        success=True,
+        message=f"Interview simulated ({result.generated_by}).",
+        data=result,
+    )
 
 
 # --- Analysis History (read/manage over already-persisted evaluations) ---

@@ -14,6 +14,7 @@ from app.schemas.analytics import (
     TrendData,
     TopItem,
     RecentAnalysisItem,
+    SkillFrequency,
 )
 from app.services import analytics as analytics_service
 
@@ -74,6 +75,17 @@ def get_top_jobs(
     logger.info("Analytics top-jobs endpoint accessed.")
     data = analytics_service.get_top_job_descriptions(db, limit)
     return ApiResponse[List[TopItem]](success=True, message="Top job descriptions retrieved.", data=data)
+
+
+@router.get("/skill-frequency", response_model=ApiResponse[SkillFrequency])
+def get_skill_frequency(
+    limit: int = Query(settings.ANALYTICS_TOP_LIMIT, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """Most frequently matched requirements and most common missing skills."""
+    logger.info("Analytics skill-frequency endpoint accessed.")
+    data = analytics_service.get_skill_frequency(db, limit)
+    return ApiResponse[SkillFrequency](success=True, message="Skill frequency retrieved.", data=data)
 
 
 @router.get("/recent", response_model=ApiResponse[List[RecentAnalysisItem]])

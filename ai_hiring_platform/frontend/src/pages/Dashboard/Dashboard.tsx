@@ -1,9 +1,10 @@
 import { useEffect, useState, type FC } from 'react';
-import { Server, Database, Cpu, Boxes, Sparkles, Activity, ArrowRight } from 'lucide-react';
-import axios from 'axios';
-import type { HistoryRecord } from '../../types';
+import { Server, Database, Cpu, Boxes, Sparkles, Activity, ArrowRight, Users, Award, CheckCircle2 } from 'lucide-react';
+import { api } from '../../api/client';
+import type { HistoryRecord, DashboardOverview } from '../../types';
 import type { PageId } from '../../components/layout/navConfig';
 import { fetchHistory } from '../../api/history';
+import { fetchDashboardOverview } from '../../api/dashboard';
 import { getScoreColor } from '../../components/analysis/scoreColors';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatCard } from '../../components/ui/StatCard';
@@ -34,11 +35,13 @@ export const Dashboard: FC<DashboardProps> = ({ onNavigate }) => {
   const [recentLoading, setRecentLoading] = useState(true);
   const [recentError, setRecentError] = useState<string | null>(null);
 
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
+
   useEffect(() => {
     let active = true;
     const checkHealth = async () => {
       try {
-        const res = await axios.get('http://localhost:8000/api/v1/health');
+        const res = await api.get('/health');
         if (!active) return;
         if (res.data && res.data.success) {
           setBackend('Connected');
@@ -75,6 +78,16 @@ export const Dashboard: FC<DashboardProps> = ({ onNavigate }) => {
   };
 
   useEffect(() => {
+    let active = true;
+    fetchDashboardOverview()
+      .then((o) => active && setOverview(o))
+      .catch(() => active && setOverview(null));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     loadRecent();
   }, []);
 
@@ -91,6 +104,35 @@ export const Dashboard: FC<DashboardProps> = ({ onNavigate }) => {
           )
         }
       />
+
+      {overview && overview.total_analyses > 0 && (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            icon={<Users className="h-6 w-6" />}
+            iconClass="bg-indigo-500/10 text-indigo-400"
+            label="Total analyses"
+            value={String(overview.total_analyses)}
+          />
+          <StatCard
+            icon={<Award className="h-6 w-6" />}
+            iconClass="bg-emerald-500/10 text-emerald-400"
+            label="Average score"
+            value={`${overview.average_overall_score}%`}
+          />
+          <StatCard
+            icon={<CheckCircle2 className="h-6 w-6" />}
+            iconClass="bg-emerald-500/10 text-emerald-400"
+            label="Selected"
+            value={String(overview.selected_count)}
+          />
+          <StatCard
+            icon={<Activity className="h-6 w-6" />}
+            iconClass="bg-amber-500/10 text-amber-400"
+            label="Avg skill coverage"
+            value={`${overview.average_skill_score}%`}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

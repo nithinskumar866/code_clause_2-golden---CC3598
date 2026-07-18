@@ -60,8 +60,11 @@ persisted before this field still validate (e.g. on export).
 `importance`/`weight` are derived from the JD wording (must-have vs nice-to-have); `coverage_score` is importance-weighted so missing must-haves cost more. Nullable for backward-compat.
 `LearningRoadmapItem`: `{ skill, estimated_time, reason }`
 
-## Known contract gap (frontend TODO)
-`frontend/src/types/index.ts` currently defines `ResumeMetadata`, `JobDescriptionMetadata`, `SystemStatusData` — but **no `HiringReport` / `RequirementFit` / `LearningRoadmapItem` types**. The Analysis page needs these added to consume `/analysis/evaluate`. This is the first contract item to align on.
+## Contract gap — CLOSED (2026-07-18)
+`frontend/src/types/index.ts` now mirrors the full report contract: `RequirementFit` (incl. `importance`/`weight`), `LearningRoadmapItem`, `AuthenticityAssessment`, `CandidateProfile`, and `AnalysisReport.authenticity`/`candidate_profile`. The Analysis + CandidateProfile pages render authenticity, seniority/profile, and must/nice badges. The backend base URL is centralized in `frontend/src/api/client.ts` (`VITE_API_BASE`-aware).
+
+## Still backend-only (no UI yet — see roadmap)
+These endpoints exist, are tested, and return the shapes above but have no frontend surface: `/dashboard/*` aggregates, all `/analytics/*`, recruiter `/notes`, workflow `/status`, and server-side `/export/pdf`. Multi-candidate ranking is not implemented at all.
 
 ## Change protocol
 1. Backend edits schema + endpoint, keeps tests green, records it in `decisions.md` and appends a note in `session_log.md`.

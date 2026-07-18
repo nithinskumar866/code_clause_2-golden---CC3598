@@ -10,6 +10,62 @@ from app.schemas.analysis import HiringReport, RequirementFit, LearningRoadmapIt
 from app.services.ai import skill_semantics_service
 from app.services.ai import authenticity_service
 from app.services.ai import llm_service
+from app.services.ai.retrieval_service import _KNOWN_TECH
+
+
+def _short(text: str, limit: int = 90) -> str:
+    """One-line, trimmed snippet of evidence for readable explanations."""
+    s = " ".join((text or "").split())
+    return s if len(s) <= limit else s[:limit].rstrip() + "…"
+
+
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9+#./-]*")
+
+
+def _candidate_tokens(chunk: str) -> set:
+    """Extract whole-word skill tokens from a chunk (never sub-spans of a word, so
+    'PyTorch' stays 'pytorch' rather than being split into 'pyt'). Keeps known-tech
+    taxonomy terms plus full words that look technical (CamelCase / acronym / carries
+    a digit or tech punctuation)."""
+    lowered = chunk.lower()
+    found = {t for t in _KNOWN_TECH if re.search(rf"(?<!\w){re.escape(t)}(?!\w)", lowered)}
+    for m in _WORD_RE.finditer(chunk):
+        core = m.group(0).strip("+#/.")
+        if len(core) < 2:
+            continue
+        techy = (
+            any(ch.isdigit() for ch in core)
+            or any(ch in "+#/." for ch in core)
+            or core.isupper()                 # acronym: SQL, AWS, API
+            or core[1:] != core[1:].lower()   # internal caps: PyTorch, FastAPI
+        )
+        if techy:
+            found.add(core.lower())
+    return found
+
+
+def _extract_candidate_skills(retrieval_results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """
+    Recover the candidate's actual skill vocabulary from the retrieved evidence
+    chunks, so transfer/equivalence reasoning can compare a requirement against
+    what the candidate really has (not just against the JD's own terms).
+
+    Returns {skill_lower: {display, narrative, chunk, section}} where `narrative`
+    marks a skill shown in an Experience/Projects section (real, hands-on) rather
+    than merely listed. Skills are extracted generically, never from a hardcoded list.
+    """
+    skills: Dict[str, Dict[str, Any]] = {}
+    for item in retrieval_results:
+        for m in item.get("matches", []):
+            chunk = m.get("chunk", "") or ""
+            section = m.get("section", "") or ""
+            narrative = section in ("Experience", "Projects")
+            for tok in _candidate_tokens(chunk):
+                cur = skills.get(tok)
+                # Prefer a narrative occurrence (stronger evidence) if one exists.
+                if cur is None or (narrative and not cur["narrative"]):
+                    skills[tok] = {"display": tok, "narrative": narrative, "chunk": chunk, "section": section}
+    return skills
 
 def _weighted_coverage(retrieval_results: List[Dict[str, Any]]) -> int:
     """Requirement coverage weighted by importance: missing a must-have costs more than
@@ -88,25 +144,51 @@ def _build_reasoning_prompt(evidence_data: Dict[str, Any]) -> str:
     """Grounded recruiter-reasoning prompt. Provider-agnostic plain text."""
     return (
         "You are a senior technical recruiter evaluating one candidate against a "
-        "job's requirements.\n\n"
-        "For each requirement you are given its importance (must-have vs nice-to-have) "
-        "and the exact evidence retrieved from the candidate's resume. Reason ONLY from "
-        "this evidence — never assume a skill that is not shown. A requirement with no "
-        "retrieved evidence is \"Missing\".\n\n"
+        "job's requirements. Reason like an expert who understands how technologies "
+        "relate — not a keyword matcher.\n\n"
+        "For each requirement you get its importance (must vs nice-to-have) and the exact "
+        "evidence retrieved from the resume. Reason ONLY from this evidence — never invent "
+        "a skill that is not shown.\n\n"
         f"EVIDENCE:\n{_format_evidence_for_prompt(evidence_data)}\n\n"
         "Return a SINGLE valid JSON object (no markdown, no commentary) with EXACTLY "
         f"this shape:\n{_REASONING_SCHEMA}\n\n"
-        "Guidance:\n"
-        "- status: Matched (clearly demonstrated), Partial (mentioned but thin/"
-        "uncorroborated), or Missing (no evidence).\n"
+        "How to reason (this is the important part — apply it to ANY technology, do not "
+        "rely on a fixed list of known tools):\n"
+        "- Use your knowledge of how technologies relate — families, ecosystems, "
+        "programming languages, frameworks, databases, cloud platforms, DevOps tools, "
+        "AI/ML libraries, and front-end/back-end stacks — to judge each requirement from "
+        "the evidence, not by literal keyword match.\n"
+        "- EQUIVALENT skills satisfy a requirement. If the evidence shows a skill that is "
+        "interchangeable with the requirement in real work, the requirement is Matched or "
+        "Partial, NOT Missing.\n"
+        "- IMPLIED skills count. If demonstrated work necessarily requires the requirement "
+        "(e.g. a project built on a framework implies its underlying language), the "
+        "evidence for one supports the other.\n"
+        "- TRANSFERABLE skills ease a gap. When the candidate lacks the exact requirement "
+        "but has a closely-adjacent skill in the same family, keep the status honest "
+        "(usually Missing or Partial) but say in the explanation that it is a short "
+        "ramp-up because of that related experience — name the specific related skill you "
+        "saw in the evidence.\n"
+        "- Judge DEPTH from evidence type. A skill shown only in a skills list, with no "
+        "project or outcome, is Partial and the limitation should say depth is unconfirmed. "
+        "A skill with genuine project/experience evidence is Matched. A skill with no "
+        "evidence and nothing related in the same family is Missing. Never accept a bare "
+        "keyword as proof, and never invent skills or evidence not present in the text.\n"
+        "- status: Matched (clearly shown, equivalent, or implied), Partial "
+        "(mentioned/thin), Missing (no evidence and nothing transferable).\n"
+        "- explanation (relevance) and limitations: PLAIN, simple English a busy recruiter "
+        "reads at a glance. State clearly what is strong and what is the gap — the why and "
+        "the what, grounded in the specific evidence. No jargon, no filler.\n"
         "- matched_evidence: quote the specific evidence you used (empty if Missing).\n"
-        "- confidence (0-100): how strongly the evidence supports the requirement.\n"
-        "- Weight must-have requirements more heavily than nice-to-haves in strengths, "
-        "weaknesses, and the recommendation.\n"
-        "- interview_questions: target the weakest or least-verified areas.\n"
+        "- confidence (0-100): how strongly the evidence supports your conclusion.\n"
+        "- interview_questions: make them USEFUL to the interviewer. For a transferable "
+        "gap, ask a question that reveals whether the candidate can truly cross over from "
+        "their related experience to the requirement. For a shallow claim, ask for one "
+        "concrete example and its outcome. For a strong skill, probe depth.\n"
+        "- Weight must-haves more heavily than nice-to-haves in strengths, weaknesses, and "
+        "the recommendation.\n"
         "- rejection_email: a brief, kind draft ONLY if the candidate is clearly weak "
-        "overall; otherwise null.\n"
-        "- Never invent skills or evidence."
+        "overall; otherwise null."
     )
 
 
@@ -178,144 +260,161 @@ def _select_learning_band(transfer_score: float):
 
 def run_mock_evaluation(evidence_data: Dict[str, Any]) -> HiringReport:
     """
-    Refined dynamic matching, classification, relationship reasoning, and scoring algorithm (Mock Engine).
+    Deterministic reasoning engine (used when no LLM is configured). Beyond direct
+    keyword-to-evidence matching it reasons about the candidate's real skill set:
+      * equivalent skills rescue a Missing requirement (SQL satisfies MySQL);
+      * closely-related skills are noted as transferable (Django eases FastAPI),
+        without falsely claiming the skill;
+    and writes plain-language relevance/limitations that state what is strong and
+    what is the gap. Interview questions are transfer-aware.
     """
     retrieval_results = evidence_data.get("retrieval_results", [])
     total_reqs = len(retrieval_results)
 
-    # Skills the candidate has actual resume evidence for. Used as the basis for
-    # semantic transferability reasoning about missing requirements.
-    demonstrated_skills = [it["requirement"] for it in retrieval_results if it.get("matches")]
-    
+    # The candidate's actual skills, recovered from evidence (with hands-on flag).
+    candidate_skills = _extract_candidate_skills(retrieval_results)
+    cand_names = [v["display"] for v in candidate_skills.values()]
+
+    def _relate(req: str):
+        """(best_skill, cosine, relation, is_narrative) for a requirement vs the resume."""
+        best, cos, rel = skill_semantics_service.find_related_skill(req, cand_names, exclude={req})
+        narrative = bool(best) and candidate_skills.get(best.lower(), {}).get("narrative", False)
+        return best, cos, rel, narrative
+
     requirements_fits = []
     missing_skills = []
     learning_roadmap = []
-    
+    covered_weight = 0.0
+    total_weight = 0.0
     matched_count = 0
     exp_aligned_count = 0
     proj_aligned_count = 0
     confidence_sum = 0
-    
     strengths = []
     weaknesses = []
     skill_relationships = []
-    
-    # 1. Evaluate every requirement structurally
+    # Requirements the candidate can transfer into (for interview questions).
+    transfer_targets = []   # (req, related_skill)
+    partial_targets = []    # req listed but shallow
+    matched_targets = []    # req strongly held
+
     for item in retrieval_results:
         req = item["requirement"]
         matches = item.get("matches", [])
         req_importance = item.get("importance", "must")
         req_weight = item.get("weight", settings.REQUIREMENT_WEIGHT_MUST)
-
-        # Classify the requirement into a category via semantic prototype
-        # similarity. Generalizes to skills outside the known taxonomy.
+        total_weight += req_weight
         category = skill_semantics_service.classify_category(req)
 
-        if not matches:
-            status = "Missing"
-            evidence_text = ""
-            explanation = "No evidence found in candidate's resume."
-            limitations = f"Document did not mention or imply competency in {req}."
-            confidence = 0
-
-            missing_skills.append(req)
-            # A missing must-have is a far bigger red flag than a missing nice-to-have.
-            if req_importance == "must":
-                weaknesses.insert(0, f"Missing must-have requirement: {req} ({category}).")
-            else:
-                weaknesses.append(f"Missing nice-to-have: {req} ({category}).")
-
-            # Transferability: estimate learning effort from how semantically
-            # related the candidate's demonstrated skills are to this gap.
-            transfer_score, related_skill, same_category = skill_semantics_service.estimate_transfer(
-                req, demonstrated_skills
-            )
-            est_time, strength = _select_learning_band(transfer_score)
-
-            if related_skill and strength in ("strong", "moderate"):
-                relation = "closely related" if same_category else "conceptually related"
-                reason = (
-                    f"Candidate's experience with {related_skill} is {relation} to {req}, "
-                    f"which is expected to ease the learning curve."
-                )
-                skill_relationships.append(
-                    f"{related_skill} experience partially supports acquiring {req} "
-                    f"({category}) due to semantic overlap."
-                )
-            else:
-                reason = f"Candidate lacks background in {category} concepts; requires core instruction."
-
-            learning_roadmap.append(
-                LearningRoadmapItem(
-                    skill=req,
-                    estimated_time=est_time,
-                    reason=reason
-                )
-            )
-        else:
+        if matches:
+            # --- Direct evidence path ---
             matched_count += 1
             best_match = max(matches, key=lambda x: x.get("confidence", x.get("score", 0.0) * 100))
-            best_score = best_match.get("score", 0.0)
             best_section = best_match.get("section", "Summary")
             confidence = best_match.get("confidence")
             if confidence is None:
-                sim_score = min(max(best_score * 100, 0), 100)
+                sim_score = min(max(best_match.get("score", 0.0) * 100, 0), 100)
                 sec_score = 100 if best_section == "Experience" else 80 if best_section == "Projects" else 30
-                density_score = 30
-                tech_score = 40
                 confidence = int(
                     (sim_score * settings.RETRIEVAL_WEIGHT_SIMILARITY) +
                     (sec_score * settings.RETRIEVAL_WEIGHT_SECTION) +
-                    (density_score * settings.RETRIEVAL_WEIGHT_DENSITY) +
-                    (tech_score * settings.RETRIEVAL_WEIGHT_TECH_SPECIFICITY)
+                    (30 * settings.RETRIEVAL_WEIGHT_DENSITY) +
+                    (40 * settings.RETRIEVAL_WEIGHT_TECH_SPECIFICITY)
                 )
                 confidence = min(max(confidence, 0), 100)
             evidence_text = best_match.get("chunk", "")
-            
+            confidence_sum += confidence
+            covered_weight += req_weight
             if best_section == "Experience":
                 exp_aligned_count += 1
             elif best_section == "Projects":
                 proj_aligned_count += 1
-                
+
+            # A related, hands-on skill can reinforce a shallow mention.
+            rel_skill, rel_cos, relation, rel_narr = _relate(req)
+            support = ""
+            if relation in ("equivalent", "related") and rel_narr and rel_skill.lower() != req.lower():
+                support = f" It is also reinforced by your hands-on {rel_skill} experience, which is closely related."
+                skill_relationships.append(f"Your {rel_skill} experience directly supports {req}.")
+
             if confidence >= 75:
                 status = "Matched"
                 limitations = "None"
-                explanation = f"Demonstrated practical applications inside {best_section} with high specificity."
-                strengths.append(f"Proven competency in {req} supported by matching {best_section} references.")
+                explanation = f'Clearly demonstrated in your {best_section}: "{_short(evidence_text)}". A direct, hands-on match.' + support
+                strengths.append(f"Strong, proven {req} — shown in {best_section}.")
+                matched_targets.append(req)
             else:
                 status = "Partial"
-                limitations = "Listed in Skills keyword list but lacks measurable project detail."
-                explanation = f"Listed under {best_section} section without project descriptions or outcomes."
-                weaknesses.append(f"Competency claim for {req} is only partially supported.")
-                
-                # Dynamic learning pathway
-                learning_roadmap.append(
-                    LearningRoadmapItem(
-                        skill=req,
-                        estimated_time=PARTIAL_SKILL_LEARNING_TIME,
-                        reason=f"Candidate lists {req} but needs hands-on project practice to establish confidence."
-                    )
-                )
-                
-            confidence_sum += confidence
-            
-        requirements_fits.append(
-            RequirementFit(
-                requirement=req,
-                category=category,
-                status=status,
-                matched_evidence=evidence_text,
-                explanation=explanation,
-                limitations=limitations,
-                confidence=confidence,
-                importance=req_importance,
-                weight=req_weight
-            )
-        )
-        
-    # Calculate sub-scores (0-100 scale). Coverage is importance-weighted so that
-    # missing must-haves depress the score more than missing nice-to-haves.
-    coverage_score = _weighted_coverage(retrieval_results)
+                explanation = f"You mention {req}, but it reads as a listed skill rather than hands-on work in a project." + support
+                limitations = f"Depth of {req} is unconfirmed — no project outcome shown."
+                weaknesses.append(f"{req}: mentioned but not backed by clear project work.")
+                partial_targets.append(req)
+                learning_roadmap.append(LearningRoadmapItem(
+                    skill=req, estimated_time=PARTIAL_SKILL_LEARNING_TIME,
+                    reason=f"You list {req}; a little hands-on project practice would make it interview-ready."))
+        else:
+            # --- No direct evidence: try equivalence rescue, then transfer note ---
+            rel_skill, rel_cos, relation, rel_narr = _relate(req)
+
+            if relation == "equivalent":
+                # The candidate effectively has this skill under a sibling name.
+                ev = candidate_skills.get(rel_skill.lower(), {})
+                status = "Matched" if rel_narr else "Partial"
+                evidence_text = ev.get("chunk", "")
+                confidence = int(rel_cos * 100)
+                confidence_sum += confidence
+                matched_count += 1
+                covered_weight += req_weight
+                explanation = (f"You list {rel_skill}, which is practically the same skill as {req} — "
+                               f"they are interchangeable in day-to-day work, so this is met.")
+                limitations = "None" if status == "Matched" else f"Shown as a listed skill; confirm depth of {req}/{rel_skill}."
+                strengths.append(f"{req} covered via your {rel_skill} experience (equivalent skills).")
+                skill_relationships.append(f"{rel_skill} is equivalent to {req} — counts as met.")
+                (matched_targets if status == "Matched" else partial_targets).append(req)
+
+            elif relation == "related":
+                # Adjacent skill: honest gap, but a fast ramp-up — do NOT claim it.
+                status = "Missing"
+                evidence_text = ""
+                confidence = 0
+                missing_skills.append(req)
+                explanation = (f"Not shown directly. But your {rel_skill} experience is closely related, "
+                               f"so picking up {req} should be quick.")
+                limitations = f"No direct {req} experience yet — this is a ramp-up, not a hard gap."
+                skill_relationships.append(f"{rel_skill} is closely related to {req} — expect a short ramp-up.")
+                transfer_targets.append((req, rel_skill))
+                (weaknesses.insert(0, f"Missing must-have: {req} (but {rel_skill} transfers).")
+                 if req_importance == "must" else
+                 weaknesses.append(f"Missing nice-to-have: {req} ({rel_skill} transfers)."))
+                est_time, _ = _select_learning_band(rel_cos)
+                learning_roadmap.append(LearningRoadmapItem(
+                    skill=req, estimated_time=est_time,
+                    reason=f"You already know {rel_skill} (closely related), so expect a short ramp-up on {req}."))
+
+            else:
+                # Genuine gap: no evidence and nothing related.
+                status = "Missing"
+                evidence_text = ""
+                confidence = 0
+                missing_skills.append(req)
+                explanation = "No evidence of this skill, and no closely related experience in the resume."
+                limitations = "A genuine gap — would need dedicated learning before the role."
+                (weaknesses.insert(0, f"Missing must-have: {req} (no related experience).")
+                 if req_importance == "must" else
+                 weaknesses.append(f"Missing nice-to-have: {req}."))
+                est_time, _ = _select_learning_band(0.0)
+                learning_roadmap.append(LearningRoadmapItem(
+                    skill=req, estimated_time=est_time,
+                    reason=f"No related background found; {req} would need foundational learning."))
+
+        requirements_fits.append(RequirementFit(
+            requirement=req, category=category, status=status,
+            matched_evidence=evidence_text, explanation=explanation, limitations=limitations,
+            confidence=confidence, importance=req_importance, weight=req_weight))
+
+    # Sub-scores. Coverage is importance-weighted over the FINAL statuses (so an
+    # equivalence rescue correctly counts as covered).
+    coverage_score = int((covered_weight / total_weight) * 100) if total_weight > 0 else 0
     experience_score = int((exp_aligned_count / total_reqs) * 100) if total_reqs > 0 else 0
     project_score = int((proj_aligned_count / total_reqs) * 100) if total_reqs > 0 else 0
     confidence_score = int(confidence_sum / matched_count) if matched_count > 0 else 0
@@ -352,28 +451,41 @@ def run_mock_evaluation(evidence_data: Dict[str, Any]) -> HiringReport:
     else:
         recruiter_recommendation = "Not Recommended - Reject"
         
+    matched_n = sum(1 for f in requirements_fits if f.status == "Matched")
     summary = (
-        f"Candidate analyzed against {total_reqs} job parameters. "
-        f"Algorithm calculated overall compatibility fit at {overall_score}% based on requirement coverage ({coverage_score}%), "
-        f"experience section depth ({experience_score}%), and evidence confidence ({confidence_score}%)."
+        f"Overall fit is {overall_score}%. The candidate clearly covers {matched_n} of {total_reqs} "
+        f"requirements, with requirement coverage at {coverage_score}% and evidence confidence at "
+        f"{confidence_score}%. "
+        + (f"Some gaps are transferable from closely-related experience. "
+           if transfer_targets else "")
+        + ("Strong direct match overall." if overall_score >= 75
+           else "A conditional match worth interviewing." if overall_score >= 60
+           else "Weak fit for this role as written.")
     )
-    
-    # Dynamic questions: Depth vs Verification (Module 7)
+
+    # Interview questions that actually help the interviewer decide:
+    #  1) probe transferable gaps (does the adjacent skill really carry over?)
+    #  2) verify shallow/listed claims, 3) test depth on strong skills.
     questions = []
-    for fit in requirements_fits:
-        if fit.status == "Partial":
-            questions.append(
-                f"Verification: You list {fit.requirement} in your resume. Can you walk me through the configuration parameters or deployment settings you used in your projects?"
-            )
-        elif fit.status == "Matched" and len(questions) < 2:
-            questions.append(
-                f"Depth: You demonstrate strong experience in {fit.requirement}. Can you describe a complex troubleshooting scenario or trade-off decision you made using this tool?"
-            )
-            
+    for req, related in transfer_targets[:3]:
+        questions.append(
+            f"The candidate hasn't used {req} directly but has {related} experience, which is closely "
+            f"related. Ask them to walk through how they would apply what they know from {related} to {req} — "
+            f"their answer shows whether the transfer is real.")
+    for req in partial_targets[:2]:
+        questions.append(
+            f"They list {req} but haven't shown depth. Ask for one specific problem they solved with {req} "
+            f"and what the outcome was.")
+    for req in matched_targets[:2]:
+        if len(questions) >= 5:
+            break
+        questions.append(
+            f"They are strong in {req}. Ask about a hard trade-off or a tricky bug they handled with {req} "
+            f"to confirm real depth.")
     if not questions:
         questions = [
-            "Can you describe your system design experience in microservices or monolithic structures?",
-            "How do you approach learning new frameworks or deployment structures like Docker and Kubernetes?"
+            "Walk me through a project you are most proud of and the specific role you played.",
+            "Tell me about a time you had to learn a new tool quickly for a project.",
         ]
         
     # Rejection Email (Module 8)
@@ -404,12 +516,12 @@ Recruitment Team"""
         quality_score=quality_score,
         summary=summary,
         requirements=requirements_fits,
-        strengths=strengths[:4],
-        weaknesses=weaknesses[:4],
-        skill_relationships=skill_relationships[:3],
+        strengths=strengths[:5],
+        weaknesses=weaknesses[:5],
+        skill_relationships=skill_relationships[:5],
         missing_skills=missing_skills,
         learning_roadmap=learning_roadmap,
-        interview_questions=questions[:4],
+        interview_questions=questions[:6],
         recruiter_recommendation=recruiter_recommendation,
         rejection_email=rejection_email,
         authenticity=authenticity_result.assessment,

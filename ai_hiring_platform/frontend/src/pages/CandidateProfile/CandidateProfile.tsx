@@ -2,13 +2,19 @@ import { useCallback, useEffect, useState, type FC, type ReactNode } from 'react
 import { ArrowLeft, FileText, Briefcase, Clock, Star, ShieldCheck, Download, Sparkles } from 'lucide-react';
 import type { AnalysisReport, HistoryRecord } from '../../types';
 import { fetchHistoryReport } from '../../api/history';
-import { downloadReportJSON } from '../../lib/report';
+import { downloadReportJSON, downloadReportPDF } from '../../lib/report';
+import { WorkflowStatusControl } from '../../components/workflow/WorkflowStatusControl';
+import { RecruiterNotes } from '../../components/notes/RecruiterNotes';
+import { useToast } from '../../components/ui/toast-context';
 import { getScoreColor, getScoreBarBg, getScoreLabel, classifyFit } from '../../components/analysis/scoreColors';
 import type { FitCategory } from '../../components/analysis/scoreColors';
 import { ScoreRing } from '../../components/charts/ScoreRing';
 import { StrengthsWeaknesses } from '../../components/analysis/StrengthsWeaknesses';
 import { InterviewQuestions } from '../../components/analysis/InterviewQuestions';
 import { MissingSkills } from '../../components/analysis/MissingSkills';
+import { CandidateProfileCard } from '../../components/analysis/CandidateProfileCard';
+import { AuthenticityBlock } from '../../components/analysis/AuthenticityBlock';
+import { AiRecruiterPanel } from '../../components/analysis/AiRecruiterPanel';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import type { BadgeTone } from '../../components/ui/Badge';
@@ -77,6 +83,19 @@ export const CandidateProfile: FC<CandidateProfileProps> = ({ record, onBack }) 
   const [report, setReport] = useState<AnalysisReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const toast = useToast();
+
+  const exportPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      await downloadReportPDF(record.id);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to export PDF');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,14 +132,25 @@ export const CandidateProfile: FC<CandidateProfileProps> = ({ record, onBack }) 
           </div>
         </div>
         {report && (
-          <Button
-            variant="secondary"
-            size="sm"
-            leftIcon={<Download className="h-4 w-4" />}
-            onClick={() => downloadReportJSON(report)}
-          >
-            Export JSON
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Download className="h-4 w-4" />}
+              onClick={() => downloadReportJSON(report)}
+            >
+              Export JSON
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={downloadingPdf}
+              leftIcon={<Download className="h-4 w-4" />}
+              onClick={exportPdf}
+            >
+              Export PDF
+            </Button>
+          </div>
         )}
       </div>
 
@@ -204,6 +234,15 @@ const ProfileBody: FC<{ report: AnalysisReport; record: HistoryRecord }> = ({ re
           </div>
         </div>
       </Card>
+
+      {/* Editable recruiter workflow stage (persisted) */}
+      <WorkflowStatusControl analysisId={record.id} />
+
+      {/* Deterministic identity + seniority fit (F3) */}
+      {report.candidate_profile && <CandidateProfileCard profile={report.candidate_profile} />}
+
+      {/* Credibility / keyword-stuffing signal (F1) */}
+      {report.authenticity && <AuthenticityBlock authenticity={report.authenticity} />}
 
       {/* Skill analysis + Score breakdown */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -293,6 +332,12 @@ const ProfileBody: FC<{ report: AnalysisReport; record: HistoryRecord }> = ({ re
 
       {/* Recommended Interview Focus (reused) */}
       <InterviewQuestions questions={report.interview_questions ?? []} />
+
+      {/* AI Recruiter — self-interview from resume evidence (on demand) */}
+      <AiRecruiterPanel analysisId={record.id} />
+
+      {/* Recruiter notes CRUD (persisted) */}
+      <RecruiterNotes analysisId={record.id} />
     </div>
   );
 };

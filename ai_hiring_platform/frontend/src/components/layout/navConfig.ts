@@ -1,7 +1,16 @@
 import type { ComponentType } from 'react';
-import { LayoutDashboard, FileUp, Briefcase, Sparkles, Clock, Settings2 } from 'lucide-react';
+import { LayoutDashboard, FileUp, Briefcase, Sparkles, Clock, Settings2, Trophy, BarChart3 } from 'lucide-react';
 
-export type PageId = 'dashboard' | 'resume' | 'job' | 'analysis' | 'history' | 'profile' | 'status';
+export type PageId =
+  | 'dashboard'
+  | 'resume'
+  | 'job'
+  | 'analysis'
+  | 'ranking'
+  | 'history'
+  | 'profile'
+  | 'analytics'
+  | 'status';
 
 export interface NavItem {
   id: PageId;
@@ -28,8 +37,13 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Evaluation',
     items: [
       { id: 'analysis', name: 'AI Analysis', icon: Sparkles },
+      { id: 'ranking', name: 'Candidate Ranking', icon: Trophy },
       { id: 'history', name: 'Analysis History', icon: Clock },
     ],
+  },
+  {
+    label: 'Insights',
+    items: [{ id: 'analytics', name: 'Analytics', icon: BarChart3 }],
   },
   { label: 'System', items: [{ id: 'status', name: 'System Status', icon: Settings2 }] },
 ];
@@ -40,7 +54,9 @@ export const PAGE_TITLES: Record<PageId, string> = {
   resume: 'Resumes',
   job: 'Job Descriptions',
   analysis: 'AI Analysis',
+  ranking: 'Candidate Ranking',
   history: 'Analysis History',
   profile: 'Candidate Profile',
+  analytics: 'Analytics',
   status: 'System Status',
 };

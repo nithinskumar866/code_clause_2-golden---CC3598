@@ -1,6 +1,7 @@
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from llama_index.core.schema import TextNode
+from app.core.config import settings
 from app.core.logging import logger
 
 # Section Heading Regex maps
@@ -65,59 +66,115 @@ def parse_sections(text: str) -> Dict[str, List[Dict[str, Any]]]:
         
     return sections_map
 
+# Sentence boundary: end punctuation (. ! ?) then whitespace then a capital/digit.
+# (Fixed-width lookbehind of one char — Python re requires that.) A post-pass then
+# re-joins fragments that were split right after a known abbreviation.
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9])")
+_ABBREV = {
+    "e.g.", "i.e.", "etc.", "vs.", "mr.", "ms.", "mrs.", "dr.", "sr.", "jr.",
+    "ph.", "st.", "no.", "inc.", "ltd.", "co.", "u.s.", "u.k.",
+}
+
+
+def _split_into_sentences(line: str) -> List[str]:
+    """Split a line into sentences on strong boundaries. A bullet or a fragment with no
+    terminal punctuation stays whole — resume bullets are the atomic unit we want to keep.
+    Fragments split right after an abbreviation (e.g. "e.g.") are re-joined."""
+    line = line.strip()
+    if not line:
+        return []
+    out: List[str] = []
+    for frag in _SENTENCE_BOUNDARY.split(line):
+        frag = frag.strip()
+        if not frag:
+            continue
+        if out:
+            last_word = out[-1].split()[-1].lower() if out[-1].split() else ""
+            # Merge when the previous fragment ended on an abbreviation or a single
+            # capital initial (e.g. "B." in "B.S."), which is not a real sentence end.
+            if last_word in _ABBREV or re.fullmatch(r"[a-z]\.", last_word):
+                out[-1] = f"{out[-1]} {frag}"
+                continue
+        out.append(frag)
+    return out
+
+
+def _chunk_sentences(sentences: List[Tuple[str, int]]) -> List[Dict[str, Any]]:
+    """
+    Group (sentence, page) units into sentence-boundary-respecting chunks that target
+    CHUNK_TARGET_CHARS and never exceed CHUNK_MAX_CHARS, with CHUNK_SENTENCE_OVERLAP
+    sentences carried into the next chunk for retrieval-recall context. Each chunk's
+    page is the page of its first sentence. Deterministic — no randomness.
+    """
+    target = settings.CHUNK_TARGET_CHARS
+    hard_max = settings.CHUNK_MAX_CHARS
+    overlap = max(0, settings.CHUNK_SENTENCE_OVERLAP)
+
+    chunks: List[Dict[str, Any]] = []
+    current: List[Tuple[str, int]] = []
+
+    def _flush():
+        if not current:
+            return
+        text = " ".join(s for s, _ in current).strip()
+        if text:
+            chunks.append({"text": text, "page": current[0][1]})
+
+    cur_len = 0
+    for sent, page in sentences:
+        add_len = len(sent) + (1 if current else 0)
+        # Flush before adding when the current chunk is already substantial and this
+        # sentence would push it past the hard max.
+        if current and cur_len >= target and cur_len + add_len > hard_max:
+            _flush()
+            tail = current[-overlap:] if overlap else []
+            current = list(tail)
+            cur_len = sum(len(s) + 1 for s, _ in current)
+        current.append((sent, page))
+        cur_len += add_len
+        # A single oversized sentence (e.g. a long unpunctuated bullet) stands alone.
+        if cur_len >= hard_max:
+            _flush()
+            current = []
+            cur_len = 0
+
+    _flush()
+    return chunks
+
+
 def structure_resume_to_nodes(
-    text: str, 
-    candidate_id: int, 
-    resume_id: int, 
+    text: str,
+    candidate_id: int,
+    resume_id: int,
     filename: str
 ) -> List[TextNode]:
     """
-    Groups raw text into semantic sections, slices sections into reasonable paragraph chunks,
-    and returns a list of configured LlamaIndex TextNodes with rich metadata.
+    Structure raw resume text into retrieval-ready TextNodes: section-aware first
+    (Skills/Experience/Projects/…), then sentence-aware chunking within each section
+    so chunks fall on natural boundaries rather than an arbitrary line/char count.
+    Page numbers propagate from the source lines; metadata schema is unchanged.
     """
     logger.info(f"Structuring resume text into LlamaIndex Nodes for Resume ID: {resume_id}")
     sections_map = parse_sections(text)
-    
+
     nodes: List[TextNode] = []
     global_chunk_count = 0
-    
+
     for section_name, items in sections_map.items():
         if not items:
             continue
-            
-        # Group lines by paragraphs (lines are grouped if they were adjacent or block-based)
-        # For simplicity, we join contiguous lines and split them on larger logical blocks.
-        # Alternatively, we can group items in blocks of 3-5 lines to preserve sentences,
-        # or combine paragraphs until they reach 400-800 characters.
-        
-        # Let's rebuild text from lines, keeping track of the starting page for the block.
-        blocks: List[Dict[str, Any]] = []
-        current_block_lines = []
-        block_start_page = items[0]["page"]
-        
+
+        # Flatten the section's lines into (sentence, page) units, preserving the page
+        # each sentence came from (so evidence still cites the right page).
+        sentence_units: List[Tuple[str, int]] = []
         for item in items:
-            current_block_lines.append(item["text"])
-            # If line ends with sentence punctuation or block is getting large, we split
-            if len(current_block_lines) >= 4 or len(" ".join(current_block_lines)) > 600:
-                blocks.append({
-                    "text": "\n".join(current_block_lines),
-                    "page": block_start_page
-                })
-                current_block_lines = []
-                block_start_page = item["page"]
-                
-        if current_block_lines:
-            blocks.append({
-                "text": "\n".join(current_block_lines),
-                "page": block_start_page
-            })
-            
-        # Create a TextNode for each chunk block
-        for idx, block in enumerate(blocks):
+            for sent in _split_into_sentences(item["text"]):
+                sentence_units.append((sent, item["page"]))
+
+        for block in _chunk_sentences(sentence_units):
             block_text = block["text"].strip()
             if not block_text:
                 continue
-                
             node = TextNode(
                 text=block_text,
                 metadata={
@@ -132,6 +189,6 @@ def structure_resume_to_nodes(
             )
             nodes.append(node)
             global_chunk_count += 1
-            
+
     logger.info(f"Generated {len(nodes)} TextNodes for Resume ID: {resume_id}")
     return nodes

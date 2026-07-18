@@ -152,6 +152,7 @@ def extract_requirements(jd_text: str) -> List[str]:
     if yrs:
         add(f"{max(yrs)}+ years experience")
 
+
     # Drop a bare single-word phrase that is merely a fragment of a longer kept
     # phrase (e.g. "financial" vs "financial modeling"), unless it is a real known
     # skill in its own right (e.g. keep "react" even alongside "react native").

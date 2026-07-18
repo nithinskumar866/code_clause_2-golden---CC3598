@@ -1,6 +1,6 @@
 import { useState, useEffect, type FC } from 'react';
 import { Database } from 'lucide-react';
-import axios from 'axios';
+import { api } from '../../api/client';
 import type { AnalysisReport, FileRecord } from '../../types';
 import { ConfigPanel } from '../../components/analysis/ConfigPanel';
 import { ReportViewer } from '../../components/analysis/ReportViewer';
@@ -25,8 +25,8 @@ export const Analysis: FC = () => {
     setError(null);
     try {
       const [resumesRes, jdsRes] = await Promise.all([
-        axios.get('http://localhost:8000/api/v1/resume'),
-        axios.get('http://localhost:8000/api/v1/job'),
+        api.get('/resume'),
+        api.get('/job'),
       ]);
 
       if (resumesRes.data && resumesRes.data.success) {
@@ -54,8 +54,8 @@ export const Analysis: FC = () => {
     setReport(null);
 
     try {
-      const response = await axios.post(
-        `http://localhost:8000/api/v1/analysis/evaluate?resume_id=${selectedResume}&jd_id=${selectedJd}`,
+      const response = await api.post(
+        `/analysis/evaluate?resume_id=${selectedResume}&jd_id=${selectedJd}`,
       );
       if (response.data && response.data.success) {
         const rpt = response.data.data.report;

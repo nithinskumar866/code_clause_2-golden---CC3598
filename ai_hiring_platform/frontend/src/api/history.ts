@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { API_V1 } from './client';
 import type { AnalysisReport, HistoryRecord, HistoryQuery, HistoryPage, HistoryPageMeta } from '../types';
 
 /**
@@ -9,7 +10,7 @@ import type { AnalysisReport, HistoryRecord, HistoryQuery, HistoryPage, HistoryP
  *   DELETE /analysis/history       → clear all
  * The base URL is centralized here so it is the single place to adjust.
  */
-const HISTORY_URL = 'http://localhost:8000/api/v1/analysis/history';
+const HISTORY_URL = `${API_V1}/analysis/history`;
 
 /**
  * The raw list-item shape emitted by the backend `AnalysisHistoryItem` schema.

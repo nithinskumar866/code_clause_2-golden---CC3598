@@ -43,11 +43,31 @@ class Settings:
     RETRIEVAL_WEIGHT_DENSITY: float = 0.05
     RETRIEVAL_WEIGHT_TECH_SPECIFICITY: float = 0.10
 
+    # Sentence-aware chunking (resume_structuring_service). Chunks respect sentence
+    # boundaries and target ~CHUNK_TARGET_CHARS, never exceeding CHUNK_MAX_CHARS; a
+    # small sentence overlap preserves context across chunk edges for retrieval recall.
+    CHUNK_TARGET_CHARS: int = int(os.getenv("CHUNK_TARGET_CHARS", "350"))
+    CHUNK_MAX_CHARS: int = int(os.getenv("CHUNK_MAX_CHARS", "600"))
+    CHUNK_SENTENCE_OVERLAP: int = int(os.getenv("CHUNK_SENTENCE_OVERLAP", "1"))
+
+    # Hybrid retrieval: fuse dense (vector/cosine) and sparse (BM25 keyword) rankings
+    # via Reciprocal Rank Fusion. Weights bias the fusion toward semantic vs lexical
+    # matches; RRF_K damps the contribution of low-ranked items.
+    HYBRID_RETRIEVAL_ENABLED: bool = os.getenv("HYBRID_RETRIEVAL_ENABLED", "true").lower() == "true"
+    HYBRID_WEIGHT_DENSE: float = float(os.getenv("HYBRID_WEIGHT_DENSE", "0.6"))
+    HYBRID_WEIGHT_SPARSE: float = float(os.getenv("HYBRID_WEIGHT_SPARSE", "0.4"))
+    HYBRID_RRF_K: int = int(os.getenv("HYBRID_RRF_K", "60"))
+
     # Minimum raw cosine similarity (0..1) a retrieved chunk must clear to count as
     # evidence for a requirement. Matches below this are dropped, so a requirement
     # with no genuinely-relevant chunk yields zero matches and is correctly reported
     # as "Missing" rather than a weak "Partial" backed by an unrelated chunk.
-    RETRIEVAL_MIN_SIMILARITY: float = float(os.getenv("RETRIEVAL_MIN_SIMILARITY", "0.30"))
+    #
+    # Calibrated for BGE-small: genuine same-domain matches score ~0.62+, whereas
+    # loosely-related cross-domain tech (e.g. a React resume vs a "python" query)
+    # sits ~0.56-0.61. A 0.30 floor let unrelated tech pass, so an off-domain resume
+    # spuriously "matched" every requirement. 0.62 separates real evidence from noise.
+    RETRIEVAL_MIN_SIMILARITY: float = float(os.getenv("RETRIEVAL_MIN_SIMILARITY", "0.62"))
 
     # Dashboard analytics decision buckets (over overall_score 0-100).
     # Selected: score >= SELECTED_MIN; Rejected: score < BORDERLINE_MIN;
@@ -73,6 +93,16 @@ class Settings:
     # Bonus added to a transfer score when the missing skill and the candidate's
     # related skill fall in the same category (reflects strong conceptual overlap).
     TRANSFER_SAME_CATEGORY_BOOST: float = 0.10
+
+    # Skill relationship reasoning (evaluation_service transfer/equivalence logic).
+    # Calibrated on BGE-small skill-name cosine: near-synonyms (SQL/MySQL/PostgreSQL)
+    # sit ~0.81-0.84, adjacent-but-distinct skills (Docker/Kubernetes 0.70,
+    # PyTorch/TensorFlow 0.72, Python/Django 0.73) sit ~0.68-0.75.
+    #   >= EQUIVALENCE : candidate effectively already has the skill (rescue a Missing
+    #                    requirement — e.g. MySQL satisfied by SQL). Raw cosine only.
+    #   >= RELATED     : adjacent skill — note the transfer, but never claim the skill.
+    SKILL_EQUIVALENCE_MIN: float = float(os.getenv("SKILL_EQUIVALENCE_MIN", "0.80"))
+    SKILL_RELATED_MIN: float = float(os.getenv("SKILL_RELATED_MIN", "0.68"))
 
     # --- Authenticity / keyword-stuffing detection (deterministic) ---
     # A claimed skill is "over-claimed" when it appears only in listing sections

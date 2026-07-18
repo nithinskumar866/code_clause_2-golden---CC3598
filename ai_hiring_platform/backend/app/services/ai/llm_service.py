@@ -28,10 +28,14 @@ _ALIASES = {
 }
 
 # Sensible defaults when LLM_MODEL is blank. Overridable purely via config.
+# google default is a fast, low-cost, strong-reasoning model; set LLM_MODEL to
+# 'gemini-1.5-pro' / 'gemini-2.5-pro' for maximum quality, or to whatever your key
+# supports. A model your key cannot serve simply falls back to the deterministic
+# engine at call time (get_llm never raises for a bad model id).
 _DEFAULT_MODEL = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-sonnet-5",
-    "google": "gemini-1.5-pro",
+    "google": "gemini-2.0-flash",
 }
 
 _API_KEY = {

@@ -15,12 +15,12 @@ def test_provider_aliases_canonicalize(monkeypatch):
 
 def test_model_default_then_override(monkeypatch):
     monkeypatch.setattr(settings, "LLM_MODEL", "")
-    assert llm_service.resolve_model("google") == "gemini-1.5-pro"
+    assert llm_service.resolve_model("google") == "gemini-2.0-flash"
     assert llm_service.resolve_model("anthropic") == "claude-sonnet-5"
     assert llm_service.resolve_model("openai") == "gpt-4o-mini"
     # LLM_MODEL always wins, regardless of provider — pure config, no code change.
-    monkeypatch.setattr(settings, "LLM_MODEL", "gemini-2.0-flash")
-    assert llm_service.resolve_model("google") == "gemini-2.0-flash"
+    monkeypatch.setattr(settings, "LLM_MODEL", "gemini-1.5-pro")
+    assert llm_service.resolve_model("google") == "gemini-1.5-pro"
 
 
 def test_get_llm_returns_none_without_key(monkeypatch):
