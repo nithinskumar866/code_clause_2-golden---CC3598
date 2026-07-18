@@ -1,0 +1,17 @@
+# Keep the build context (and image) lean.
+.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+ai_hiring_platform/frontend/dist
+ai_hiring_platform/storage
+**/*.db
+**/*.sqlite*
+**/.env
+# Legacy personality-predictor project — not part of the hiring platform image.
+src
+data
+trained_personality_predictor_model.pkl
+model_architecture.md

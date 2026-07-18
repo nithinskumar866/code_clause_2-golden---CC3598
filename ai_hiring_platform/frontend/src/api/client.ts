@@ -1,17 +1,22 @@
 import axios from 'axios';
 
 /**
- * Single source of truth for the backend base URL. Previously the literal
- * `http://localhost:8000` was duplicated across five files; changing the host
- * now means editing one place (or setting `VITE_API_BASE` at build time).
+ * Single source of truth for the backend base URL.
  *
- * `import.meta.env.VITE_API_BASE` wins when provided, so the same bundle can
- * target a deployed backend without code changes; it falls back to the local
- * dev server.
+ * Resolution order:
+ *   1. An explicit `VITE_API_BASE` (set at build time) always wins — point the
+ *      same bundle at any deployed backend.
+ *   2. Otherwise: in a dev build use the local backend (`http://localhost:8000`);
+ *      in a production build use **same-origin** (empty base → `/api/v1`), which is
+ *      how the single-container deploy serves the API alongside the frontend.
  */
+const _explicit = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '');
 export const API_BASE: string =
-  (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') ??
-  'http://localhost:8000';
+  _explicit !== undefined && _explicit !== ''
+    ? _explicit
+    : import.meta.env.DEV
+      ? 'http://localhost:8000'
+      : '';
 
 /** Full `/api/v1` root, e.g. `${API_V1}/analysis/evaluate`. */
 export const API_V1 = `${API_BASE}/api/v1`;

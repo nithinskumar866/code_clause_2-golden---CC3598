@@ -1,6 +1,8 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -49,8 +51,16 @@ app.include_router(workflow.router, prefix=settings.API_V1_STR, tags=["Workflow 
 # Export routes live under /analysis/{id}/export/*, so mount at the API root.
 app.include_router(export.router, prefix=settings.API_V1_STR, tags=["Report Export"])
 
-@app.get("/")
-def read_root():
-    return {
-        "message": f"Welcome to the {settings.PROJECT_NAME} API. Access /docs for API documentation."
-    }
+# Serve the built frontend (single-container deploy) when a dist directory is present.
+# Mounted LAST so all /api/v1/* routes take precedence; unknown paths fall back to the
+# SPA. Absent in local/dev/test (no dist) — then the JSON welcome route is used instead.
+_FRONTEND_DIST = os.environ.get("FRONTEND_DIST", "")
+if _FRONTEND_DIST and os.path.isdir(_FRONTEND_DIST):
+    logger.info(f"Serving frontend static files from {_FRONTEND_DIST}")
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
+else:
+    @app.get("/")
+    def read_root():
+        return {
+            "message": f"Welcome to the {settings.PROJECT_NAME} API. Access /docs for API documentation."
+        }

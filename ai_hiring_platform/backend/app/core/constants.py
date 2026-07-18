@@ -1,9 +1,11 @@
 import os
 
-# Root directory of storage relative to the backend workspace
+# Root directory of storage relative to the backend workspace. Overridable via the
+# STORAGE_DIR env var so deployments (e.g. Docker/Hugging Face Spaces) can point it
+# at a writable/persistent volume instead of the source tree.
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROJECT_DIR = os.path.dirname(BACKEND_DIR)
-STORAGE_DIR = os.path.join(PROJECT_DIR, "storage")
+STORAGE_DIR = os.environ.get("STORAGE_DIR") or os.path.join(PROJECT_DIR, "storage")
 
 # Upload subdirectories
 UPLOAD_DIR = os.path.join(STORAGE_DIR, "uploads")
