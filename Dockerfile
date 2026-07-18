@@ -23,13 +23,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Build tools for any packages without prebuilt wheels.
+# No PyTorch: embeddings run on FastEmbed/ONNX, so the image stays small and fits
+# low-memory free tiers. Only lightweight build tools are needed.
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
-
-# CPU-only PyTorch first (much smaller than the default CUDA build), so the
-# transitive dependency resolver reuses it.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 COPY ai_hiring_platform/backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
@@ -38,9 +35,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ai_hiring_platform/backend/ ./
 COPY --from=frontend /fe/dist ./frontend_dist
 
-# Pre-download the BGE embedding model into the image for fast cold starts.
-RUN python -c "from llama_index.embeddings.huggingface import HuggingFaceEmbedding; HuggingFaceEmbedding(model_name='BAAI/bge-small-en-v1.5')" || \
-    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
+# Pre-download the BGE ONNX model into the image for fast cold starts.
+RUN python -c "from llama_index.embeddings.fastembed import FastEmbedEmbedding; FastEmbedEmbedding(model_name='BAAI/bge-small-en-v1.5').get_text_embedding('warmup')"
 
 # Writable runtime dirs (Spaces may run as a non-root user).
 RUN mkdir -p /app/runtime/storage && chmod -R 777 /app/runtime /app/.cache

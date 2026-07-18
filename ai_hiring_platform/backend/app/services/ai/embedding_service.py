@@ -1,27 +1,27 @@
 from typing import List
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.embeddings.fastembed import FastEmbedEmbedding
 from llama_index.core.schema import TextNode
 from app.core.constants import EMBEDDING_MODEL_NAME
 from app.core.logging import logger
 
-# Lazy-loaded singleton instance
+# Lazy-loaded singleton instance.
+#
+# Uses FastEmbed (ONNX runtime) rather than sentence-transformers/PyTorch: it runs
+# the SAME BAAI/bge-small-en-v1.5 weights, so embeddings and every calibrated
+# similarity threshold are unchanged, but it removes the heavy torch dependency —
+# ~4x less memory and faster cold starts, so the service fits small free-tier hosts.
 _embedding_model_instance = None
 
-def get_embedding_model() -> HuggingFaceEmbedding:
-    """
-    Returns the initialized LlamaIndex HuggingFaceEmbedding model instance (Singleton).
-    """
+def get_embedding_model() -> FastEmbedEmbedding:
+    """Return the initialized LlamaIndex embedding model instance (singleton)."""
     global _embedding_model_instance
     if _embedding_model_instance is None:
-        logger.info(f"Initializing embedding model: {EMBEDDING_MODEL_NAME}...")
+        logger.info(f"Initializing embedding model (FastEmbed/ONNX): {EMBEDDING_MODEL_NAME}...")
         try:
-            _embedding_model_instance = HuggingFaceEmbedding(
-                model_name=EMBEDDING_MODEL_NAME,
-                # Can specify device (cpu, cuda) - default will auto-detect
-            )
+            _embedding_model_instance = FastEmbedEmbedding(model_name=EMBEDDING_MODEL_NAME)
             logger.info("Embedding model initialized successfully.")
         except Exception as e:
-            logger.error(f"Failed to initialize HuggingFace embedding model: {e}", exc_info=True)
+            logger.error(f"Failed to initialize FastEmbed embedding model: {e}", exc_info=True)
             raise e
     return _embedding_model_instance
 
