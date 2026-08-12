@@ -8,13 +8,19 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.database import init_db
 from app.core.exceptions import register_exception_handlers
-from app.api.v1.routers import health, resume, job, analysis, dashboard, notes, workflow, analytics, export
+from app.api.v1.routers import health, resume, job, analysis, dashboard, notes, workflow, analytics, export, chat, embeddings, documents
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize the database
     logger.info("Starting up FastAPI application...")
     init_db()
+    # Bring the shared embedding store level with the database, in the background.
+    # Incremental and non-blocking: startup is not delayed, and a deployment that
+    # predates a model fills that model in without anyone pressing a button.
+    from app.services import indexing_service
+
+    indexing_service.backfill_on_startup()
     yield
     # Shutdown logic if any
     logger.info("Shutting down FastAPI application...")
@@ -44,6 +50,10 @@ app.include_router(job.router, prefix=f"{settings.API_V1_STR}/job", tags=["Job D
 app.include_router(analysis.router, prefix=f"{settings.API_V1_STR}/analysis", tags=["Analyses"])
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["Dashboard"])
 app.include_router(analytics.router, prefix=f"{settings.API_V1_STR}/analytics", tags=["Analytics"])
+# Recruiter chatbot — pool-wide candidate Q&A over the unified corpus index.
+app.include_router(chat.router, prefix=f"{settings.API_V1_STR}/chat", tags=["Recruiter Chat"])
+app.include_router(embeddings.router, prefix=f"{settings.API_V1_STR}/embeddings", tags=["Embedding Store"])
+app.include_router(documents.router, prefix=f"{settings.API_V1_STR}/documents", tags=["Document Management"])
 # Notes routes span /analysis/{id}/notes and /notes/{id}, so mount at the API root.
 app.include_router(notes.router, prefix=settings.API_V1_STR, tags=["Notes"])
 # Workflow status routes live under /analysis/{id}/status, so mount at the API root.

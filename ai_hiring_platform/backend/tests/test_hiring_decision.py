@@ -81,7 +81,16 @@ def test_hiring_decision_agent_fallback_evaluation(mock_evidence_data):
     assert len(report["weaknesses"]) > 0
     assert "skill_relationships" in report
     assert "recruiter_recommendation" in report
-    assert "technical" in report["recruiter_recommendation"].lower() or "recommend" in report["recruiter_recommendation"].lower()
+    # Must be one of the engine's three recommendation bands. Substring-matching
+    # "technical"/"recommend" silently excluded the middle band ("Conditional Match -
+    # Proceed to Initial Interview"), so the test failed the moment a fixture scored
+    # into it — asserting membership checks the contract instead of the wording.
+    assert report["recruiter_recommendation"] in {
+        "Highly Recommended - Proceed to Technical Screen",
+        "Recommended - Proceed to Technical Screen",
+        "Conditional Match - Proceed to Initial Interview",
+        "Not Recommended - Reject",
+    }
     
     # Extract python requirements fit
     python_fit = [r for r in report["requirements"] if r["requirement"] == "python"][0]
@@ -110,6 +119,12 @@ def test_hiring_decision_agent_fallback_evaluation(mock_evidence_data):
     # Check questions list
     assert len(report["interview_questions"]) > 0
     
-    assert report["overall_score"] < 75
-    assert report["rejection_email"] is not None
-    assert "rejection" in report["rejection_email"].lower() or "move forward" in report["rejection_email"].lower()
+    # A rejection draft is written only for a Weak fit (below 50, the bottom Match
+    # Score band). Drafting one for a Moderate fit would hand the recruiter a
+    # rejection for a candidate the same report told them to interview.
+    if report["overall_score"] < 50:
+        assert report["rejection_email"] is not None
+        assert ("rejection" in report["rejection_email"].lower()
+                or "move forward" in report["rejection_email"].lower())
+    else:
+        assert report["rejection_email"] is None

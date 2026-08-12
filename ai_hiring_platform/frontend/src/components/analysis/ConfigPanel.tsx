@@ -1,7 +1,8 @@
-import type { FC } from 'react';
+import { useMemo, type FC } from 'react';
 import { Layers, RefreshCw, Play } from 'lucide-react';
 import type { FileRecord } from '../../types';
 import { Banner } from '../ui/Banner';
+import { SearchableSelect, type SearchableOption } from '../ui/SearchableSelect';
 
 interface ConfigPanelProps {
   resumes: FileRecord[];
@@ -34,6 +35,16 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
   const listsEmpty = resumes.length === 0 && jds.length === 0;
   const showSkeleton = loadingLists && listsEmpty;
 
+  // A native dropdown is fine for five files and unusable for six hundred, which is
+  // what the pool actually holds — so both pickers are searchable. The id stays in the
+  // hint rather than the label so two candidates with similar filenames are still
+  // distinguishable at a glance.
+  const toOptions = (files: FileRecord[]): SearchableOption[] =>
+    files.map((f) => ({ value: String(f.id), label: f.filename, hint: `ID #${f.id}` }));
+
+  const resumeOptions = useMemo(() => toOptions(resumes), [resumes]);
+  const jdOptions = useMemo(() => toOptions(jds), [jds]);
+
   return (
     <div className="lg:col-span-1 rounded-xl border border-white/5 bg-card p-6 h-fit space-y-6">
       <div className="flex items-center gap-2 pb-2 border-b border-white/5">
@@ -54,45 +65,25 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Candidate Resume Selector */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Candidate Resume
-            </label>
-            <select
-              value={selectedResume}
-              onChange={(e) => onSelectResume(e.target.value)}
-              disabled={loadingLists || evaluating}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3.5 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-            >
-              <option value="">-- Choose Candidate --</option>
-              {resumes.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.filename} (ID: #{r.id})
-                </option>
-              ))}
-            </select>
-          </div>
+          <SearchableSelect
+            label="Candidate Resume"
+            placeholder="Search candidates…"
+            options={resumeOptions}
+            value={selectedResume}
+            onChange={onSelectResume}
+            disabled={loadingLists || evaluating}
+            emptyMessage="No resume matches that."
+          />
 
-          {/* Job Description Selector */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Job Description
-            </label>
-            <select
-              value={selectedJd}
-              onChange={(e) => onSelectJd(e.target.value)}
-              disabled={loadingLists || evaluating}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3.5 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-            >
-              <option value="">-- Choose Job Description --</option>
-              {jds.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.filename} (ID: #{j.id})
-                </option>
-              ))}
-            </select>
-          </div>
+          <SearchableSelect
+            label="Job Description"
+            placeholder="Search job descriptions…"
+            options={jdOptions}
+            value={selectedJd}
+            onChange={onSelectJd}
+            disabled={loadingLists || evaluating}
+            emptyMessage="No job description matches that."
+          />
         </div>
       )}
 

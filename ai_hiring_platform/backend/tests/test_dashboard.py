@@ -77,9 +77,9 @@ def clean_reports():
 # --------------------------- Unit tests (service) ---------------------------
 
 def test_overview_counts_and_averages(db_session, clean_reports):
-    # selected (>=80), borderline (60-79), rejected (<60)
+    # Match Score bands: selected (>=70), borderline (50-69), rejected (<50)
     _seed(db_session, overall=90, coverage=80, experience=60, project=40, quality=100)
-    _seed(db_session, overall=70, coverage=60, experience=40, project=20, quality=80)
+    _seed(db_session, overall=60, coverage=60, experience=40, project=20, quality=80)
     _seed(db_session, overall=30, coverage=10, experience=0, project=0, quality=60)
 
     overview = dashboard_service.get_overview(db_session)
@@ -88,7 +88,7 @@ def test_overview_counts_and_averages(db_session, clean_reports):
     assert overview.selected_count == 1
     assert overview.borderline_count == 1
     assert overview.rejected_count == 1
-    assert overview.average_overall_score == round((90 + 70 + 30) / 3, 2)
+    assert overview.average_overall_score == round((90 + 60 + 30) / 3, 2)
     # "skill score" maps to coverage_score
     assert overview.average_skill_score == round((80 + 60 + 10) / 3, 2)
     assert overview.average_quality_score == round((100 + 80 + 60) / 3, 2)

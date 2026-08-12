@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import TypedDict, Dict, Any, Optional, List
 from langgraph.graph import StateGraph, START, END
 from app.agents.candidate_intelligence.agent import CandidateIntelligenceAgent
@@ -10,6 +11,13 @@ class AgentState(TypedDict):
     jd_id: int
     jd_path: str
     analysis_id: int
+    # Which embedding model gathers the evidence. Carried through the graph so the
+    # choice is part of the run's identity rather than a global default.
+    embedding_engine: Optional[str]
+    # When the resume entered the platform. Feeds the Match Score's freshness
+    # parameter; carried through the graph rather than read from the clock so a
+    # re-run of the same analysis reproduces the same score.
+    resume_uploaded_at: Optional[datetime]
     # Structured evidence output from Candidate Intelligence Agent
     evidence_report: Optional[Dict[str, Any]]
     # Final enriched compatibility report output from Hiring Decision Agent
@@ -28,7 +36,9 @@ def run_candidate_intelligence_node(state: AgentState) -> Dict[str, Any]:
         resume_path=state["resume_path"],
         jd_id=state["jd_id"],
         jd_path=state["jd_path"],
-        analysis_id=state["analysis_id"]
+        analysis_id=state["analysis_id"],
+        embedding_engine=state.get("embedding_engine"),
+        resume_uploaded_at=state.get("resume_uploaded_at"),
     )
     return {"evidence_report": evidence_report}
 
@@ -61,7 +71,9 @@ def execute_hiring_pipeline(
     resume_path: str,
     jd_id: int,
     jd_path: str,
-    analysis_id: int
+    analysis_id: int,
+    embedding_engine: Optional[str] = None,
+    resume_uploaded_at: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """
     Orchestrates Candidate Intelligence Agent and Hiring Decision Agent sequentially using LangGraph.
@@ -73,6 +85,8 @@ def execute_hiring_pipeline(
         "jd_id": jd_id,
         "jd_path": jd_path,
         "analysis_id": analysis_id,
+        "embedding_engine": embedding_engine,
+        "resume_uploaded_at": resume_uploaded_at,
         "evidence_report": None,
         "final_report": None
     }

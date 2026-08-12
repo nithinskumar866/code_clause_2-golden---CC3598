@@ -47,6 +47,16 @@ export const Analysis: FC = () => {
     fetchData();
   }, []);
 
+  // Preselect the candidate handed over from the Recruiter Assistant (?resume=<id>),
+  // once the resume list has loaded so the id resolves to a real option.
+  useEffect(() => {
+    if (!resumes.length) return;
+    const wanted = new URLSearchParams(window.location.search).get('resume');
+    if (wanted && resumes.some((r) => String(r.id) === wanted)) {
+      setSelectedResume(wanted);
+    }
+  }, [resumes]);
+
   const handleEvaluate = async () => {
     if (!selectedResume || !selectedJd) return;
     setEvaluating(true);
@@ -60,7 +70,7 @@ export const Analysis: FC = () => {
       if (response.data && response.data.success) {
         const rpt = response.data.data.report;
         setReport(rpt);
-        toast.success('Evaluation complete', `Overall match score: ${rpt.overall_score}%`);
+        toast.success('Evaluation complete', `Overall match score: ${rpt.overall_score.toFixed(1)}%`);
       } else {
         const msg = response.data?.message || 'Analysis evaluation failed.';
         setError(msg);

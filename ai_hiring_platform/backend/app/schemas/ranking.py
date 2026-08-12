@@ -15,7 +15,7 @@ class RankingEntry(BaseModel):
     resume_id: int = Field(..., description="Source resume id")
     resume_filename: str = Field(..., description="Original resume filename")
 
-    overall_score: int = Field(0, description="Weighted overall compatibility (0-100)")
+    overall_score: float = Field(0.0, description="Match Score 0-100 (one decimal)")
     coverage_score: int = Field(0, description="Requirement coverage (0-100)")
     experience_score: int = Field(0, description="Experience alignment (0-100)")
     project_score: int = Field(0, description="Project relevance (0-100)")

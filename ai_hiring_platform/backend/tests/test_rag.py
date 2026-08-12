@@ -124,7 +124,7 @@ def test_vector_store_and_retrieval(generate_sample_files):
     )
     
     # We must mock or execute embedding generation
-    # BAAI/bge-small-en-v1.5 embedding step
+    # BAAI/bge-large-en-v1.5 embedding step
     from app.services.ai.embedding_service import generate_embeddings_for_nodes
     nodes_embedded = generate_embeddings_for_nodes(nodes)
     

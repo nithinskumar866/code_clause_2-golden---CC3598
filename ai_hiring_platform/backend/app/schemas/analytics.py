@@ -60,7 +60,7 @@ class RecentAnalysisItem(BaseModel):
     timestamp: datetime
     resume_filename: str
     jd_filename: str
-    overall_score: Optional[int] = None
+    overall_score: Optional[float] = None
     recommendation: str
     workflow_status: str
 

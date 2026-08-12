@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, func
+from sqlalchemy import Column, Float, Integer, String, Text, DateTime, ForeignKey, func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -10,6 +10,11 @@ class Resume(Base):
     filename = Column(String, nullable=False)
     upload_time = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(String, default="Uploaded", nullable=False)  # Status: Uploaded, Indexed, Analysed, Failed
+    # SHA-256 of the file bytes. Identifies the same CV re-uploaded under a different
+    # filename, which would otherwise be indexed twice and appear twice in every
+    # search result. Indexed for a fast lookup on upload. Nullable for rows created
+    # before this column existed.
+    content_hash = Column(String, nullable=True, index=True)
 
     # Relationship to analyses
     analyses = relationship("Analysis", back_populates="resume", cascade="all, delete-orphan")
@@ -39,7 +44,12 @@ class Analysis(Base):
     # Denormalized scores from the hiring report, backfilled on read. Enable
     # efficient SQL aggregation/filtering without loading the per-analysis report
     # files. NULL until the analysis has a completed report.
-    overall_score = Column(Integer, nullable=True, index=True)
+    # The Match Score, carried to one decimal (78.4) because that is the agreed
+    # reporting precision — rounding to a whole number here would hide real
+    # differences between candidates and between implementations of the spec.
+    # SQLite stores a non-integral value in an INTEGER-affinity column as REAL, so
+    # databases created before this widening keep working without a rewrite.
+    overall_score = Column(Float, nullable=True, index=True)
     coverage_score = Column(Integer, nullable=True)
     experience_score = Column(Integer, nullable=True)
     project_score = Column(Integer, nullable=True)

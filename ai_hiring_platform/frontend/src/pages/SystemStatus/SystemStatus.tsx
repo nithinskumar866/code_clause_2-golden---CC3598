@@ -126,7 +126,7 @@ export const SystemStatus: FC = () => {
           status="Active"
           statusClass="border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
           rows={[
-            { label: 'Model', value: 'BAAI/bge-small-en-v1.5' },
+            { label: 'Model', value: 'BAAI/bge-large-en-v1.5' },
             { label: 'Execution', value: 'Local (LlamaIndex)' },
           ]}
         />

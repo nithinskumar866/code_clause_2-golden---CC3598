@@ -29,11 +29,20 @@ def get_db():
 # applied idempotently by ensure_schema().
 _ANALYSES_ADDED_COLUMNS = {
     "workflow_status": "ALTER TABLE analyses ADD COLUMN workflow_status VARCHAR NOT NULL DEFAULT 'Applied'",
-    "overall_score": "ALTER TABLE analyses ADD COLUMN overall_score INTEGER",
+    # REAL: the Match Score is reported to one decimal. An older database whose
+    # column was created as INTEGER needs no rewrite — SQLite's INTEGER affinity
+    # stores a non-integral value as REAL rather than truncating it.
+    "overall_score": "ALTER TABLE analyses ADD COLUMN overall_score REAL",
     "coverage_score": "ALTER TABLE analyses ADD COLUMN coverage_score INTEGER",
     "experience_score": "ALTER TABLE analyses ADD COLUMN experience_score INTEGER",
     "project_score": "ALTER TABLE analyses ADD COLUMN project_score INTEGER",
     "quality_score": "ALTER TABLE analyses ADD COLUMN quality_score INTEGER",
+}
+
+
+_RESUMES_ADDED_COLUMNS = {
+    # Content fingerprint used to detect a duplicate upload of the same CV.
+    "content_hash": "ALTER TABLE resumes ADD COLUMN content_hash VARCHAR",
 }
 
 
@@ -59,6 +68,15 @@ def ensure_schema(bind=None):
                 logger.info(f"Backfilling column analyses.{column} ...")
                 conn.execute(text(ddl))
                 added = True
+
+        resume_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(resumes)"))}
+        if resume_cols:
+            for column, ddl in _RESUMES_ADDED_COLUMNS.items():
+                if column not in resume_cols:
+                    logger.info(f"Backfilling column resumes.{column} ...")
+                    conn.execute(text(ddl))
+                    added = True
+
         if added:
             conn.commit()
 

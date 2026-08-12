@@ -85,17 +85,36 @@ Formulates validation prompts targeting low-confidence claims.
 
 ---
 
-## 8. Weighted Compatibility Score
-Normalizes the overall match evaluation.
+## 8. Match Score (the headline number)
+Compares a candidate against a **specific** job across nine weighted parameters.
+Full specification, including every neutral value and penalty slope, in
+[`Match_Score.md`](./Match_Score.md).
 
-- **Input:** Coverage, Experience, Projects, Confidence, Quality scores.
+- **Input:** the structured job profile (`job_profile_extractor`) and the candidate
+  facets (`candidate_facets_service`), both derived deterministically by Agent 1.
 - **Reasoning:**
-  - Retrieve configured weights from Settings:
-    - $W_{\text{coverage}} = 0.35$
-    - $W_{\text{experience}} = 0.25$
-    - $W_{\text{projects}} = 0.20$
-    - $W_{\text{confidence}} = 0.15$
-    - $W_{\text{quality}} = 0.05$
-  - Multiply:
-    $$\text{Overall Score} = \sum (\text{Score}_i \times W_i)$$
-- **Output:** Reproducible overall compatibility score (0-100).
+  - Score each parameter 0-100 independently, marking `neutral` any dimension the
+    JD never stated.
+  - Multiply by the configured weights (`settings.MATCH_WEIGHT_*`, sum 1.00):
+    $$\text{Match Score} = \sum (\text{Score}_i \times W_i)$$
+
+    | Parameter | Weight | | Parameter | Weight |
+    |---|---|---|---|---|
+    | Skill | 0.20 | | Education | 0.08 |
+    | Experience | 0.15 | | Location | 0.08 |
+    | Technology | 0.14 | | Availability | 0.07 |
+    | Designation | 0.14 | | Freshness | 0.05 |
+    | Industry | 0.09 | | | |
+
+  - Clamp to 0-100, round to **one decimal**.
+- **Output:** a reproducible score plus its nine-row decomposition, each row
+  carrying the sentence that justifies it.
+- **Invariant:** an unstated requirement scores neutrally and can never fail a
+  candidate; a *stated* requirement the candidate fails still scores low.
+
+### 8b. Evidence sub-scores (retained, no longer the headline)
+Coverage, Experience Alignment, Project Relevance, Evidence Confidence and Quality
+are still computed from retrieved evidence and shown separately. They are what the
+strengths, weaknesses, learning roadmap and interview questions are reasoned from.
+Their legacy weighted total (`settings.WEIGHT_*`) is used as `overall_score` only
+for analyses evaluated before the Match Score existed.

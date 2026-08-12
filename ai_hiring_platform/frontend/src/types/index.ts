@@ -35,6 +35,28 @@ export interface FileRecord {
 /** Result of a single document upload (resume or job description). */
 export type UploadResult = FileRecord;
 
+/** Result of one file within a bulk upload batch. */
+export interface BulkUploadFileResult {
+  filename: string;
+  success: boolean;
+  data?: UploadResult;
+  error?: string;
+  /** The file's content already exists in the pool — a correct skip, not a failure. */
+  duplicate?: boolean;
+  existing_id?: number;
+  existing_filename?: string;
+}
+
+/** Result of a bulk upload request. */
+export interface BulkUploadResult {
+  success_count: number;
+  failed_count: number;
+  /** Files skipped because the same content is already indexed. */
+  duplicate_count?: number;
+  total: number;
+  results: BulkUploadFileResult[];
+}
+
 /* ------------------------------------------------------------------ *
  * Hiring analysis report — mirror of backend schemas/analysis.py.
  * The frontend only mirrors this contract; it never defines it.
@@ -52,6 +74,8 @@ export interface RequirementFit {
   // backward-compat with reports persisted before the field existed.
   importance?: 'must' | 'nice' | null;
   weight?: number | null;
+  /** Scannable one-line verdict shown on the collapsed row. Null on older reports. */
+  evidence_summary?: string | null;
 }
 
 export interface LearningRoadmapItem {
@@ -104,6 +128,31 @@ export interface RetrievalResult {
   error?: string;
 }
 
+/* ------------------------------------------------------------------ *
+ * Match Score — mirror of backend schemas/analysis.py :: MatchScore.
+ * ------------------------------------------------------------------ */
+
+export interface MatchParameter {
+  key: string;
+  label: string;
+  /** Share of the final score this parameter carries, 0.0-1.0. */
+  weight: number;
+  /** This parameter's own score, 0-100, to one decimal. */
+  score: number;
+  /** score x weight — the points this parameter contributed. */
+  contribution: number;
+  /** Why it scored what it did, in recruiter language. */
+  basis: string;
+  /** The job description never stated this requirement, so it scored mid-range. */
+  neutral: boolean;
+}
+
+export interface MatchScore {
+  score: number;
+  band: string;
+  parameters: MatchParameter[];
+}
+
 export interface AnalysisReport {
   analysis_id: number;
   candidate_id: number;
@@ -111,7 +160,10 @@ export interface AnalysisReport {
   jd_id: number;
   retrieval_results: RetrievalResult[];
 
+  /** The Match Score, 0-100 to one decimal. */
   overall_score: number;
+  /** Its nine-parameter decomposition. Absent on reports evaluated before Match Score. */
+  match_score?: MatchScore | null;
   coverage_score: number;
   experience_score: number;
   project_score: number;
@@ -339,4 +391,384 @@ export interface HistoryRecord {
   overall_score: number;
   recruiter_recommendation: string;
   summary: string;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Recruiter chatbot — mirrors backend/app/schemas/chat.py
+ * ------------------------------------------------------------------------- */
+
+/** One retrieved resume chunk backing a claim — the audit trail for a match. */
+export interface ChatEvidence {
+  skill: string;
+  text: string;
+  section: string;
+  page: number;
+  filename: string;
+  similarity: number;
+  /** The chunk contains the skill verbatim, rather than merely being semantically near it. */
+  literal: boolean;
+}
+
+/** Decomposition of the match percentage, so the number is explainable. */
+export interface ChatScoreBreakdown {
+  skill_coverage: number;
+  evidence_strength: number;
+  experience_fit: number;
+}
+
+export interface ChatCandidate {
+  resume_id: number;
+  name: string | null;
+  title: string | null;
+  filename: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  total_years: number | null;
+  seniority_level: string | null;
+  match_percentage: number;
+  breakdown: ChatScoreBreakdown;
+  matched_skills: string[];
+  missing_skills: string[];
+  demonstrated_skills: string[];
+  listed_only_skills: string[];
+  /** Per-skill substantiation 0-100 and the resume sections that proved it. */
+  skill_depth: Record<string, number>;
+  skill_sections: Record<string, string[]>;
+  all_skills: string[];
+  sections_present: string[];
+  experience_note: string;
+  /** One-line headline judgement, e.g. "Strong fit — 88%, proven in real work". */
+  verdict: string;
+  /** Card body as scannable points rather than a paragraph. */
+  highlights: string[];
+  /** Whether this candidate satisfies a location the recruiter asked for. */
+  location_match: boolean;
+  /** How to say it — "based in T Nagar, as you asked" / "listed in Bangalore, not T Nagar". */
+  location_note: string;
+  reasoning: string;
+  evidence: ChatEvidence[];
+}
+
+/**
+ * A direct answer to a direct question about one candidate.
+ *
+ * `found: false` means the resume genuinely does not state the detail. That is a real
+ * answer — substituting a pool-wide search would hand back a different person.
+ */
+export interface ChatFact {
+  resume_id: number;
+  name: string | null;
+  attribute: string;
+  value: string | null;
+  found: boolean;
+  evidence: ChatEvidence[];
+}
+
+/** One concrete choice offered alongside a question back. */
+export interface ChatClarificationOption {
+  label: string;
+  query: string;
+  action: 'ask' | 'navigate';
+  resume_id: number | null;
+}
+
+/**
+ * A question the assistant asked back, with the options that answer it.
+ *
+ * Raised only when it genuinely cannot proceed — several real people share the name,
+ * or every constraint combination is empty. Each option carries a measured outcome.
+ */
+export interface ChatClarification {
+  question: string;
+  options: ChatClarificationOption[];
+  /** True when "I don't know which — show me all" is a sensible reply. */
+  allow_all: boolean;
+  all_label: string;
+}
+
+/** What SHAPE an answer is, so the UI renders it as what it actually is. */
+export type ChatAnswerType =
+  | 'candidates'
+  | 'comparison'
+  | 'fact'
+  | 'explanation'
+  | 'clarification'
+  | 'refusal'
+  | 'empty';
+
+/** A suggested next step shown under an answer. */
+export interface ChatSuggestion {
+  label: string;
+  query: string;
+  /** `ask` re-queries the assistant; `navigate` hands off to AI Analysis. */
+  action: 'ask' | 'navigate';
+  resume_id: number | null;
+}
+
+/** How the backend understood the question — shown so recruiters can see the parse. */
+export interface ChatIntent {
+  kind: string;
+  skills: string[];
+  min_years: number | null;
+  /** Places named in the question that the pool actually knows about. */
+  places: string[];
+  /** The detail a fact question asked for ("location", "initials"), if any. */
+  attribute: string | null;
+  named_candidates: string[];
+  /** [typed, corrected] pairs, e.g. [["javaa", "java"]]. */
+  corrections: string[][];
+  unresolved_name: string | null;
+  /** A place the recruiter named that no resume mentions — reported, never dropped. */
+  unmatched_place: string | null;
+  is_followup: boolean;
+  /** "rules" or "rules+llm" — whether the language model helped read the question. */
+  parsed_by: string;
+}
+
+export interface ChatResponse {
+  answer: string;
+  answer_type: ChatAnswerType;
+  candidates: ChatCandidate[];
+  fact: ChatFact | null;
+  clarification: ChatClarification | null;
+  refused: boolean;
+  refusal_category: string | null;
+  /** The assistant asked a question back instead of guessing. */
+  needs_clarification: boolean;
+  intent: ChatIntent | null;
+  suggestions: ChatSuggestion[];
+  diagnostics: Record<string, unknown>;
+  elapsed_ms: number;
+}
+
+export interface CorpusStatus {
+  indexed_resumes: number;
+  indexed_chunks: number;
+  database_resumes: number | null;
+  in_sync: boolean;
+  cached: boolean;
+}
+
+export interface CorpusSyncResult {
+  added: number;
+  updated: number;
+  removed: number;
+  unchanged: number;
+  total_resumes: number;
+  total_chunks: number;
+}
+
+/** A single rendered turn in the chat transcript. */
+export interface ChatTurn {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  answerType?: ChatAnswerType;
+  fact?: ChatFact | null;
+  clarification?: ChatClarification | null;
+  candidates?: ChatCandidate[];
+  intent?: ChatIntent | null;
+  suggestions?: ChatSuggestion[];
+  diagnostics?: Record<string, unknown>;
+  refused?: boolean;
+  needsClarification?: boolean;
+  elapsedMs?: number;
+}
+
+/* ---------------------------------------------------------------------------
+ * Shared embedding store + model comparison
+ * ------------------------------------------------------------------------- */
+
+/** One embedding model the platform can index and search with. */
+export interface EngineInfo {
+  name: string;
+  model: string | null;
+  dimension: number | null;
+  location: string | null;
+  /** False when a remote endpoint is unreachable — it cannot be indexed with. */
+  available: boolean;
+  configured: boolean;
+  /** Each model carries its own cosine floor, calibrated to equal selectivity. */
+  min_similarity: number | null;
+}
+
+export interface IndexProgressInfo {
+  model: string;
+  state: 'idle' | 'queued' | 'running' | 'done' | 'error';
+  done: number;
+  total: number;
+  embedded: number;
+  reused: number;
+  percent: number;
+  elapsed_seconds: number;
+  error: string | null;
+}
+
+/** How much of the shared chunk set one model actually holds. */
+export interface ModelCoverage {
+  model: string;
+  indexed_resumes: number;
+  indexed_chunks: number;
+  dimension: number | null;
+  in_sync: boolean;
+  progress: IndexProgressInfo;
+}
+
+/**
+ * One document set, several models indexing it.
+ *
+ * `comparable_resumes` is the intersection — the only population on which a
+ * multi-model comparison is honest. `models_aligned` goes false the moment they
+ * diverge, which is the condition that used to go unnoticed.
+ */
+export interface StoreCoverage {
+  documents: { resumes: number; chunks: number };
+  database_resumes: number | null;
+  documents_in_sync: boolean;
+  models: ModelCoverage[];
+  comparable_resumes: number;
+  models_aligned: boolean;
+  engines: EngineInfo[];
+}
+
+export interface ComparisonCandidate {
+  resume_id: number;
+  name: string | null;
+  title: string | null;
+  match_percentage: number;
+  total_years: number | null;
+  matched_skills: string[];
+  missing_skills: string[];
+  top_evidence: string | null;
+  section: string | null;
+  similarity: number | null;
+}
+
+/** What one model made of the question. */
+export interface ModelAnswer {
+  model: string;
+  dimension: number | null;
+  available: boolean;
+  answer: string;
+  /** Only present when the LLM toggle is on. */
+  llm_answer: string | null;
+  answer_type: string;
+  candidates: ComparisonCandidate[];
+  elapsed_ms: number;
+  indexed_resumes: number;
+  error: string | null;
+}
+
+/**
+ * How much the models agree.
+ *
+ * There is no labelled ground truth in a resume pool, so the honest measurement is
+ * agreement rather than correctness: unanimity means the choice of model is not
+ * buying anything for this question, and divergence is where a human should look.
+ */
+export interface ComparisonAgreement {
+  top1_unanimous: boolean;
+  top1_by_model: Record<string, string | null>;
+  /** Jaccard overlap of returned resume sets, keyed "modelA|modelB". */
+  overlap: Record<string, number>;
+  common_resume_ids: number[];
+}
+
+export interface ComparisonResponse {
+  question: string;
+  models: ModelAnswer[];
+  agreement: ComparisonAgreement;
+  compared_over_resumes: number;
+  fair_mode: boolean;
+  warnings: string[];
+}
+
+/* -------------------------------------------------------------------------
+ * Document management — the working set
+ *
+ * Uploading a resume and paying to embed it are separate acts, and at 300+ CVs the
+ * difference is expensive. The WORKING SET is the subset currently parsed into the
+ * shared document layer, and therefore the subset that can be embedded and searched.
+ * It is deliberately narrower than "everything uploaded".
+ * ------------------------------------------------------------------------- */
+
+export interface ManagedResume {
+  id: number;
+  filename: string;
+  upload_time: string;
+  status: string;
+  /** False when the row survives but the file behind it does not. */
+  file_present: boolean;
+  /** Parsed and chunked, and therefore eligible for embedding. */
+  in_working_set: boolean;
+  chunks: number;
+  /** Deterministic profile fields — available only once the resume has been parsed. */
+  name: string | null;
+  title: string | null;
+  total_years: number | null;
+  location: string | null;
+  /** {model -> holds vectors for this resume}. A model can legitimately be behind. */
+  models: Record<string, boolean>;
+}
+
+export interface ManagedResumeList {
+  resumes: ManagedResume[];
+  total: number;
+  in_working_set: number;
+  models: Record<string, number>;
+}
+
+/** A JD carries no index state: it is parsed at analysis time and never embedded. */
+export interface ManagedJob {
+  id: number;
+  filename: string;
+  upload_time: string;
+  status: string;
+  file_present: boolean;
+  analyses: number;
+}
+
+export interface ManagedJobList {
+  jobs: ManagedJob[];
+  total: number;
+}
+
+export interface WorkingSetResult {
+  added: number;
+  unchanged: number;
+  removed: number;
+  failed: string[];
+  chunks: number;
+  working_set: number;
+  /** Models realigned after a removal — a file write, not an embedding run. */
+  realigned: string[];
+}
+
+export interface DeleteResult {
+  deleted: number;
+  files_removed: number;
+}
+
+
+/** One section of a parsed resume, as the viewer renders it. */
+export interface ResumeSection {
+  section: string;
+  page: number;
+  text: string;
+}
+
+/**
+ * A resume as the platform actually holds it.
+ *
+ * Served from the document layer rather than re-parsed, so what a recruiter reads is
+ * exactly the text the search matched on.
+ */
+export interface ResumeContent {
+  resume_id: number;
+  filename: string | null;
+  in_working_set: boolean;
+  profile: Record<string, unknown>;
+  sections: ResumeSection[];
+  chunks: number;
 }

@@ -32,6 +32,11 @@ ai_hiring_platform/backend/temp_uploads/
 ai_hiring_platform/storage/
 ai_hiring_platform/backend/logs/
 
+# ---- Local test artifacts (real candidate documents — never commit) ----
+/*-Amulya_Sahani_Resume/
+/*-Amulya_Sahani_Resume.zip
+/DevOps_Engineer_Job_Description.docx
+
 # ---- OS / Editor ----
 .DS_Store
 Thumbs.db

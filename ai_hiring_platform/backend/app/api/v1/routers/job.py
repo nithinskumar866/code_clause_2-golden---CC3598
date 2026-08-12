@@ -24,6 +24,45 @@ def upload_job_description(file: UploadFile = File(...), db: Session = Depends(g
         data=response_data
     )
 
+
+@router.post("/upload-bulk")
+def upload_jds_bulk(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
+    """Upload multiple job description files at once. Each file is processed independently."""
+    logger.info(f"Bulk JD upload request received. File count: {len(files)}")
+    results = []
+    success_count = 0
+    failed_count = 0
+
+    for file in files:
+        try:
+            db_jd = validate_and_save_job_description(db, file)
+            results.append({
+                "filename": file.filename,
+                "success": True,
+                "data": JobDescriptionResponse.model_validate(db_jd).model_dump(),
+            })
+            success_count += 1
+        except Exception as e:
+            logger.error(f"Bulk JD upload: failed to process {file.filename}: {e}")
+            results.append({
+                "filename": file.filename,
+                "success": False,
+                "error": str(e),
+            })
+            failed_count += 1
+
+    return {
+        "success": True,
+        "message": f"{success_count} uploaded, {failed_count} failed.",
+        "data": {
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "total": len(files),
+            "results": results,
+        },
+    }
+
+
 @router.get("", response_model=ApiResponse[List[JobDescriptionResponse]])
 def list_job_descriptions(db: Session = Depends(get_db)):
     logger.info("Listing job descriptions from database.")
@@ -35,3 +74,4 @@ def list_job_descriptions(db: Session = Depends(get_db)):
         message="Job Descriptions retrieved successfully.",
         data=response_data
     )
+

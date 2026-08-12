@@ -110,9 +110,9 @@ def test_repository_sort_and_pagination(db_session, clean_reports):
 
 
 def test_repository_recommendation_buckets(db_session, clean_reports):
-    _seed(db_session, overall=95)  # Selected
-    _seed(db_session, overall=70)  # Borderline
-    _seed(db_session, overall=30)  # Rejected
+    _seed(db_session, overall=95)  # Selected  (>= 70)
+    _seed(db_session, overall=60)  # Borderline (50-69)
+    _seed(db_session, overall=30)  # Rejected  (< 50)
     _, sel = history_repository.search(db_session, filters=_filters(recommendation="Selected"), sort="newest")
     _, bor = history_repository.search(db_session, filters=_filters(recommendation="Borderline"), sort="newest")
     _, rej = history_repository.search(db_session, filters=_filters(recommendation="Rejected"), sort="newest")

@@ -12,7 +12,7 @@ import type { BadgeTone } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { Skeleton } from '../../components/common/Skeleton';
-import { getScoreColor } from '../../components/analysis/scoreColors';
+import { formatScore, getScoreColor } from '../../components/analysis/scoreColors';
 import { useToast } from '../../components/ui/toast-context';
 
 type SortKey = 'rank' | 'overall_score' | 'coverage_score' | 'quality_score' | 'resume_filename';
@@ -120,7 +120,7 @@ export const Ranking: FC = () => {
       toast.success(
         'Ranking complete',
         data.top_candidate
-          ? `Top: ${data.top_candidate.resume_filename} (${data.top_candidate.overall_score}%)`
+          ? `Top: ${data.top_candidate.resume_filename} (${formatScore(data.top_candidate.overall_score)}%)`
           : 'No candidate could be evaluated.',
       );
     } catch (err: any) {
@@ -267,7 +267,7 @@ export const Ranking: FC = () => {
                   <div className="flex items-center gap-6">
                     <div className="text-center">
                       <div className={`rounded-lg border px-3 py-1.5 text-2xl font-bold ${getScoreColor(result.top_candidate.overall_score)}`}>
-                        {result.top_candidate.overall_score}%
+                        {formatScore(result.top_candidate.overall_score)}%
                       </div>
                       <span className="mt-1 block text-[10px] uppercase tracking-wider text-gray-500">Overall</span>
                     </div>
@@ -362,7 +362,7 @@ export const Ranking: FC = () => {
                             <span className="text-gray-600">—</span>
                           ) : (
                             <span className={`rounded-md border px-2 py-0.5 font-bold ${getScoreColor(e.overall_score)}`}>
-                              {e.overall_score}%
+                              {formatScore(e.overall_score)}%
                             </span>
                           )}
                         </td>

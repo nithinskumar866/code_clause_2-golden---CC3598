@@ -27,8 +27,34 @@ def _technical_specificity(text: str) -> int:
 
 def _build_match(node, cosine: float) -> Dict[str, Any]:
     """Compute the ranking signals + confidence blend for one retrieved chunk."""
-    chunk_txt = node.text.strip()
-    section = node.metadata.get("section", "Summary")
+    return _score_chunk(
+        text=node.text,
+        section=node.metadata.get("section", "Summary"),
+        page=node.metadata.get("page", 1),
+        filename=node.metadata.get("filename", ""),
+        chunk_id=node.metadata.get("chunk_id", 0),
+        node_id=node.node_id,
+        cosine=cosine,
+    )
+
+
+def _score_chunk(
+    text: str,
+    section: str,
+    page: int,
+    filename: str,
+    chunk_id: Any,
+    node_id: str,
+    cosine: float,
+) -> Dict[str, Any]:
+    """
+    The ranking signals for one chunk, independent of where the chunk came from.
+
+    Split out so the shared embedding store and the legacy LlamaIndex path produce
+    IDENTICAL confidence numbers — an evaluation must not change its score because the
+    evidence arrived through a different door.
+    """
+    chunk_txt = (text or "").strip()
 
     # Signal 1: Normalized Semantic similarity (0-100)
     sim_score = min(max(cosine * 100, 0), 100)
@@ -68,10 +94,10 @@ def _build_match(node, cosine: float) -> Dict[str, Any]:
         "section": section,
         "score": round(float(cosine), 3),
         "confidence": confidence_score,
-        "page": node.metadata.get("page", 1),
-        "filename": node.metadata.get("filename", ""),
-        "chunk_id": node.metadata.get("chunk_id", 0),
-        "_node_id": node.node_id,
+        "page": page,
+        "filename": filename,
+        "chunk_id": chunk_id,
+        "_node_id": node_id,
     }
 
 
@@ -182,3 +208,84 @@ def retrieve_evidence_for_requirements(
 
     logger.info("Hybrid retrieval pipeline complete.")
     return retrieval_results
+
+
+def retrieve_evidence_from_store(
+    model_index: Any,
+    resume_id: int,
+    requirements: List[str],
+    top_k: int = 4,
+    min_similarity: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Requirement-wise hybrid retrieval over ONE candidate, from the shared store.
+
+    Same algorithm as the LlamaIndex path above — dense candidates over a similarity
+    floor, fused with BM25 by Reciprocal Rank Fusion — with two differences that matter:
+
+    * **The floor belongs to the model.** It defaults to that engine's calibrated
+      `min_similarity` rather than to BGE's global constant. Reusing one model's floor
+      on another silently discards genuine matches, which is precisely why this used to
+      be locked to BGE.
+    * **The candidate's own chunks are scored exhaustively.** `ModelIndex.search` with a
+      resume filter never takes a global top-N first, so an evaluation cannot lose its
+      evidence to stronger chunks belonging to other people.
+    """
+    engine_floor = float(getattr(model_index.engine, "min_similarity", settings.RETRIEVAL_MIN_SIMILARITY))
+    threshold = engine_floor if min_similarity is None else min_similarity
+    hybrid = settings.HYBRID_RETRIEVAL_ENABLED
+
+    rows = model_index.rows_by_resume.get(resume_id, [])
+    logger.info(
+        f"Store retrieval for resume {resume_id} on '{model_index.model}': "
+        f"{len(requirements)} requirements over {len(rows)} chunks "
+        f"(top_k={top_k}, min_similarity={threshold}, hybrid={hybrid})."
+    )
+    if not rows:
+        return [{"requirement": req, "matches": []} for req in requirements]
+
+    corpus_texts = [model_index.chunks[r]["text"] for r in rows]
+    results: List[Dict[str, Any]] = []
+
+    for req in requirements:
+        try:
+            hits = model_index.search(req, top_k=max(top_k * 4, 12), resume_ids={resume_id})
+
+            matches: List[Dict[str, Any]] = []
+            seen: set = set()
+            for row, cosine in hits:
+                if cosine < threshold:
+                    continue
+                chunk = model_index.chunks[row]
+                text = (chunk["text"] or "").strip()
+                if text in seen:
+                    continue
+                seen.add(text)
+                matches.append(_score_chunk(
+                    text=text,
+                    section=chunk["section"],
+                    page=chunk["page"],
+                    filename=chunk["filename"],
+                    chunk_id=chunk.get("ordinal", 0),
+                    node_id=str(chunk["chunk_id"]),
+                    cosine=round(float(cosine), 3),
+                ))
+
+            if hybrid and matches:
+                bm25 = keyword_retrieval.bm25_scores(req, corpus_texts)
+                bm25_by_id = {str(model_index.chunks[r]["chunk_id"]): s for r, s in zip(rows, bm25)}
+                ranked = _fuse_ranks(matches, bm25_by_id)
+            else:
+                ranked = sorted(matches, key=lambda m: m["confidence"], reverse=True)
+
+            final = []
+            for m in ranked[:top_k]:
+                m.pop("_node_id", None)
+                final.append(m)
+            results.append({"requirement": req, "matches": final})
+
+        except Exception as e:
+            logger.error(f"Error retrieving evidence for '{req}': {e}", exc_info=True)
+            results.append({"requirement": req, "matches": [], "error": str(e)})
+
+    return results

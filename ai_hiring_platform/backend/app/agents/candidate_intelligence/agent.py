@@ -1,12 +1,16 @@
 import os
 import json
-from typing import Dict, Any
+from datetime import datetime
+from typing import Dict, Any, Optional
 from app.agents.base.interfaces import CandidateIntelligenceAgentInterface
 from app.services.ai import (
+    candidate_facets_service,
     document_loader,
+    job_profile_extractor,
     parser_service,
     resume_structuring_service,
     embedding_service,
+    embedding_store,
     vector_store_service,
     jd_parser,
     jd_requirement_extractor,
@@ -23,48 +27,34 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
     and semantic retrieval services without containing core AI logic.
     """
     
-    def ingest_candidate_resume(self, resume_path: str, resume_id: int) -> None:
+    def ingest_candidate_resume(
+        self, resume_path: str, resume_id: int, embedding_engine: Optional[str] = None
+    ) -> None:
         """
-        Orchestrates resume ingestion: reads file, sections it semantically,
-        generates local embeddings, and persists FAISS index to disk.
+        Make one candidate searchable, in the store every part of the platform shares.
+
+        This used to build a FAISS index PER RESUME, hardcoded to 384 dimensions — which
+        meant the evaluation pipeline could only ever run on BGE, and that every resume
+        was embedded a second time for the chatbot's pool index. Both now read the same
+        vectors, so choosing a model is meaningful here too and nothing is embedded twice.
+
+        Content-addressed as before: an unchanged file is not re-parsed or re-embedded.
         """
-        # Content-address the cache: only reuse the persisted index if it was built
-        # from THIS exact file. Guards against a resume_id colliding with a stale
-        # on-disk index (e.g. after a DB reset) and evaluating the wrong candidate.
-        fingerprint = vector_store_service.compute_fingerprint(resume_path)
-        if vector_store_service.has_valid_index(resume_id, fingerprint):
-            logger.info(f"Resume ID {resume_id} already has a valid up-to-date vector index. Skipping ingestion.")
-            return
-
-        logger.info(f"Starting ingestion process for Resume ID: {resume_id}, path: {resume_path}")
-
-        # 1. Load document text
-        raw_text = document_loader.load_document(resume_path)
-        
-        # 2. Section text into LlamaIndex TextNodes
         filename = os.path.basename(resume_path)
-        # Use resume_id as candidate_id in Sprint 2 simple model context
-        nodes = resume_structuring_service.structure_resume_to_nodes(
-            text=raw_text,
-            candidate_id=resume_id,
-            resume_id=resume_id,
-            filename=filename
+        embedding_store.ensure_resume_searchable(
+            resume_id=resume_id, path=resume_path, filename=filename, model=embedding_engine
         )
-        
-        # 3. Generate embeddings for Nodes
-        nodes_embedded = embedding_service.generate_embeddings_for_nodes(nodes)
-
-        # 4. Save to FAISS vector index (fingerprinted to this exact source file)
-        vector_store_service.save_nodes_to_index(nodes_embedded, resume_id, fingerprint=fingerprint)
-        logger.info(f"Ingestion process finished for Resume ID: {resume_id}")
+        logger.info(f"Resume ID {resume_id} is searchable on the shared store.")
 
     def retrieve_evidence(
-        self, 
-        resume_id: int, 
+        self,
+        resume_id: int,
         resume_path: str,
-        jd_path: str, 
+        jd_path: str,
         jd_id: int,
-        analysis_id: int
+        analysis_id: int,
+        embedding_engine: Optional[str] = None,
+        resume_uploaded_at: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Orchestrates RAG retrieval: extracts keywords from JD, queries FAISS index
@@ -72,18 +62,16 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
         """
         logger.info(f"Orchestrating evidence retrieval: Resume ID {resume_id}, JD ID {jd_id}, Analysis ID {analysis_id}")
         
-        # Self-healing index load: rebuild if missing OR if the persisted index was
-        # built from a different file than the one we're evaluating now.
-        if not vector_store_service.has_valid_index(
-            resume_id, vector_store_service.compute_fingerprint(resume_path)
-        ):
-            logger.info(f"No valid up-to-date index for Resume ID {resume_id}. Running ingestion first...")
-            self.ingest_candidate_resume(resume_path, resume_id)
-            
-        # 1. Load FAISS index
-        index = vector_store_service.load_index(resume_id)
-        if not index:
-            raise RuntimeError(f"Failed to initialize or load vector index for Resume ID: {resume_id}")
+        # Self-healing: parse and index this candidate if the shared store does not
+        # already hold them under this exact file, for THIS model.
+        model_index = embedding_store.ensure_resume_searchable(
+            resume_id=resume_id,
+            path=resume_path,
+            filename=os.path.basename(resume_path),
+            model=embedding_engine,
+        )
+        if model_index.is_empty():
+            raise RuntimeError(f"No vectors available for Resume ID {resume_id}.")
             
         # 2. Parse Job Description text
         jd_text = jd_parser.parse_job_description(jd_path)
@@ -93,10 +81,14 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
         
         # 4. Perform requirement-wise similarity retrieval
         # Retrieve top 3 matching chunks for each requirement
-        retrieval_results = retrieval_service.retrieve_evidence_for_requirements(
-            index=index,
+        # Scored against this candidate's own chunks only, using the floor calibrated
+        # for whichever model is serving — a threshold from a different model would
+        # silently discard genuine evidence.
+        retrieval_results = retrieval_service.retrieve_evidence_from_store(
+            model_index=model_index,
+            resume_id=resume_id,
             requirements=requirements,
-            top_k=3
+            top_k=3,
         )
 
         # 4b. Attach requirement priority (must-have vs nice-to-have + weight),
@@ -110,11 +102,29 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
         # 4c. Derive a deterministic candidate profile (identity + seniority fit vs the
         # JD). Uses parsed resume text — the LLM never sees the raw document.
         candidate_profile = None
+        candidate_facets = None
+        resume_text = ""
         try:
             resume_text = document_loader.load_document(resume_path)
-            candidate_profile = profile_service.extract_profile(resume_text, jd_text).model_dump()
+            profile = profile_service.extract_profile(resume_text, jd_text)
+            candidate_profile = profile.model_dump()
+            # 4d. Facets the Match Score needs beyond identity: which skills are
+            # claimed versus practised, location, education, joining window. Derived
+            # here because this is the evidence side — Agent 2 only reasons over what
+            # this agent gathers, and must never open the document itself.
+            candidate_facets = candidate_facets_service.extract_candidate_facets(
+                resume_text,
+                title=profile.title,
+                total_years=profile.total_years,
+                uploaded_at=resume_uploaded_at,
+            ).to_dict()
         except Exception as e:
             logger.error(f"Candidate profile extraction skipped: {e}", exc_info=True)
+
+        # 4e. The JD's own structured facts (title, location, industry, education bar,
+        # experience range, joining window). The requirement list alone answers only
+        # "which skills"; six of the nine Match Score parameters need these.
+        job_profile = job_profile_extractor.extract_job_profile(jd_text, requirements).to_dict()
 
         # 5. Compile structured evidence report JSON
         report = {
@@ -123,6 +133,8 @@ class CandidateIntelligenceAgent(CandidateIntelligenceAgentInterface):
             "resume_id": resume_id,
             "jd_id": jd_id,
             "candidate_profile": candidate_profile,
+            "candidate_facets": candidate_facets,
+            "job_profile": job_profile,
             "retrieval_results": retrieval_results
         }
         

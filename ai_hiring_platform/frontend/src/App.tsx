@@ -3,21 +3,33 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { PAGE_TITLES } from './components/layout/navConfig';
 import type { PageId } from './components/layout/navConfig';
+import { resolveNavigation } from './components/layout/navIntent';
 import type { HistoryRecord } from './types';
 import { updateSearchParams } from './lib/url';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { ResumeUpload } from './pages/Resume/ResumeUpload';
 import { JobUpload } from './pages/Job/JobUpload';
 import { Analysis } from './pages/Analysis/Analysis';
+import { Chat } from './pages/Chat/Chat';
 import { Ranking } from './pages/Ranking/Ranking';
+import { ModelLab } from './pages/ModelLab/ModelLab';
+import { Documents } from './pages/Documents/Documents';
 import { History } from './pages/History/History';
 import { CandidateProfile } from './pages/CandidateProfile/CandidateProfile';
 import { Analytics } from './pages/Analytics/Analytics';
 import { SystemStatus } from './pages/SystemStatus/SystemStatus';
+import { PortalStateProvider } from './portal/PortalState';
+import { ChatWidget } from './portal/ChatWidget';
+import { JobBoard } from './portal/JobBoard';
+import { PostJob } from './portal/PostJob';
+import { Applicants } from './portal/Applicants';
 
 // Pages that can be restored from the URL `view` param (profile needs a
 // selected record, so it is not URL-restorable and is omitted here).
-const VIEW_PAGES: PageId[] = ['dashboard', 'resume', 'job', 'analysis', 'ranking', 'history', 'analytics', 'status'];
+const VIEW_PAGES: PageId[] = [
+  'dashboard', 'resume', 'job', 'documents', 'analysis', 'chat', 'ranking', 'history', 'analytics',
+  'jobboard', 'postjob', 'applicants', 'status',
+];
 
 const readView = (): PageId => {
   const v = new URLSearchParams(window.location.search).get('view') as PageId | null;
@@ -54,6 +66,20 @@ const App: FC = () => {
     }, 'push');
   };
 
+  /**
+   * Hand a candidate from the chat to the AI Analysis page. The resume id travels in
+   * the URL so Analysis can preselect it — the recruiter then only has to pick the JD,
+   * and the existing evaluation flow is reused rather than duplicated in the chat.
+   */
+  const evaluateCandidate = (resumeId: number) => {
+    updateSearchParams((params) => {
+      params.set('view', 'analysis');
+      params.set('resume', String(resumeId));
+    }, 'push');
+    setCurrentPage('analysis');
+    setSidebarOpen(false);
+  };
+
   const openCandidate = (record: HistoryRecord) => {
     setSelectedCandidate(record);
     setCurrentPage('profile');
@@ -73,8 +99,20 @@ const App: FC = () => {
         return <JobUpload />;
       case 'analysis':
         return <Analysis />;
+      case 'chat':
+        return <Chat onEvaluateCandidate={evaluateCandidate} />;
       case 'ranking':
         return <Ranking />;
+      case 'documents':
+        return <Documents />;
+      case 'modellab':
+        return <ModelLab />;
+      case 'jobboard':
+        return <JobBoard />;
+      case 'postjob':
+        return <PostJob />;
+      case 'applicants':
+        return <Applicants />;
       case 'analytics':
         return <Analytics />;
       case 'history':
@@ -93,6 +131,17 @@ const App: FC = () => {
   };
 
   return (
+    // The job portal's state lives above the page switch: the chat popup has to
+    // outlive whichever section is on screen, and its Copilot actions have to be
+    // able to move the user to the board they just filtered.
+    //
+    // The navigator is supplied here rather than imported by the popup: routes
+    // are this shell's business, so the assistant can only ever offer a section
+    // that genuinely exists in NAV_GROUPS.
+    <PortalStateProvider
+      onShowBoard={() => navigate('jobboard')}
+      navigator={{ resolve: resolveNavigation, go: (pageId) => navigate(pageId as PageId) }}
+    >
     <div className="flex h-screen overflow-hidden bg-background text-white">
       <a
         href="#main-content"
@@ -123,7 +172,11 @@ const App: FC = () => {
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{renderContent()}</div>
         </main>
       </div>
+
+      {/* Available from every section, which is the point of it being a popup. */}
+      <ChatWidget />
     </div>
+    </PortalStateProvider>
   );
 };
 

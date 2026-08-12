@@ -99,7 +99,7 @@ def sync_history_scores(db: Session) -> None:
     for analysis in pending:
         report = _load_report(analysis.id)
         if report and report.get("overall_score") is not None:
-            analysis.overall_score = int(report.get("overall_score") or 0)
+            analysis.overall_score = round(float(report.get("overall_score") or 0), 1)
             analysis.coverage_score = int(report.get("coverage_score") or 0)
             analysis.experience_score = int(report.get("experience_score") or 0)
             analysis.project_score = int(report.get("project_score") or 0)

@@ -27,7 +27,7 @@ Our platform follows a **Modular Monolith** pattern, combining a compiled Single
              │                                             │
     TextNodes Structuring                                  │
              │                                             │
-  Embedding (BGE-Small v1.5)                               │
+  Embedding (BGE-Large v1.5)                               │
              │                                             │
    Vector Index (FAISS)                                    │
              │                                             │

@@ -30,6 +30,13 @@ class RequirementFit(BaseModel):
     confidence: int = Field(..., description="Calculated confidence level between 0 and 100 for this claim")
     importance: Optional[str] = Field(None, description="'must' or 'nice' — whether the JD lists this as required or nice-to-have")
     weight: Optional[float] = Field(None, description="Scoring weight derived from importance (must-haves weigh more)")
+    # A recruiter scanning 20 requirements needs a verdict per row, not a paragraph.
+    # Six words of plain English: where the skill was found and whether it is proven.
+    # The longer `explanation` stays for the expanded view. Optional for
+    # backward-compatibility with reports persisted before this field existed.
+    evidence_summary: Optional[str] = Field(
+        None, description="Scannable one-line verdict, e.g. 'Listed in Skills — no project shows it'"
+    )
 
 class LearningRoadmapItem(BaseModel):
     skill: str = Field(..., description="Name of the missing skill")
@@ -59,9 +66,35 @@ class AuthenticityAssessment(BaseModel):
     corroboration_ratio: float = Field(..., description="Demonstrated claimed skills / total claimed skills (0.0-1.0)")
     explanation: str = Field(..., description="Recruiter-readable rationale for the credibility verdict")
 
+class MatchParameter(BaseModel):
+    """One of the nine dimensions the Match Score is built from.
+
+    Carries its own reasoning, so a recruiter asking "why 78.4?" gets nine
+    sentences rather than a bare number. `neutral` marks a dimension the job
+    description never stated — scored mid-range so an unwritten requirement can
+    neither reward nor punish the candidate."""
+    key: str = Field(..., description="Stable identifier, e.g. 'skill', 'location'")
+    label: str = Field(..., description="Display name, e.g. 'Skill Match'")
+    weight: float = Field(..., description="Share of the final score this parameter carries (0.0-1.0)")
+    score: float = Field(..., description="This parameter's own score, 0-100, to one decimal")
+    contribution: float = Field(..., description="score × weight — the points this parameter added")
+    basis: str = Field(..., description="Recruiter-readable reason this parameter scored what it did")
+    neutral: bool = Field(False, description="True when the requirement was unstated and a neutral score was applied")
+
+
+class MatchScore(BaseModel):
+    """The deterministic candidate-versus-job score and its full decomposition."""
+    score: float = Field(..., description="Final Match Score, 0-100, rounded to one decimal")
+    band: str = Field(..., description="Excellent fit | Strong fit | Moderate fit | Weak fit")
+    parameters: List[MatchParameter] = Field(..., description="All nine parameters, each with its own reasoning")
+
+
 class HiringReport(BaseModel):
     # Algorithmic Scores
-    overall_score: int = Field(..., description="Weighted average compatibility score between 0 and 100")
+    overall_score: float = Field(..., description="Match Score 0-100 (one decimal): the nine-parameter weighted total")
+    # Full nine-parameter decomposition behind overall_score. Optional so reports
+    # persisted before this field existed still validate.
+    match_score: Optional[MatchScore] = Field(None, description="Match Score breakdown across all nine parameters")
     coverage_score: int = Field(..., description="Requirement Coverage score between 0 and 100")
     experience_score: int = Field(..., description="Experience Alignment score between 0 and 100")
     project_score: int = Field(..., description="Project Relevance score between 0 and 100")
@@ -102,7 +135,7 @@ class AnalysisHistoryItem(BaseModel):
     resume_filename: str = Field(..., description="Original resume filename")
     jd_filename: str = Field(..., description="Original job description filename")
     workflow_status: str = Field("Applied", description="Candidate hiring workflow status")
-    overall_score: int = Field(..., description="Weighted overall compatibility score")
+    overall_score: float = Field(..., description="Match Score 0-100 (one decimal)")
     coverage_score: int = Field(..., description="Requirement coverage score")
     experience_score: int = Field(..., description="Experience alignment score")
     project_score: int = Field(..., description="Project relevance score")

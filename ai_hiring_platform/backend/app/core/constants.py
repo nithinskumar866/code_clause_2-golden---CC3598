@@ -1,10 +1,20 @@
 import os
 
+from dotenv import load_dotenv
+
 # Root directory of storage relative to the backend workspace. Overridable via the
 # STORAGE_DIR env var so deployments (e.g. Docker/Hugging Face Spaces) can point it
 # at a writable/persistent volume instead of the source tree.
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROJECT_DIR = os.path.dirname(BACKEND_DIR)
+
+# Load .env HERE rather than relying on core.config having been imported first.
+# STORAGE_DIR is read at import time, so whichever of these two modules loads first
+# decides where the platform looks for its indexes — and a wrong answer means an
+# empty pool rather than an error. `load_dotenv` is idempotent and does not override
+# variables already set in the real environment.
+load_dotenv(os.path.join(BACKEND_DIR, ".env"))
+
 STORAGE_DIR = os.environ.get("STORAGE_DIR") or os.path.join(PROJECT_DIR, "storage")
 
 # Upload subdirectories
@@ -29,7 +39,7 @@ ALLOWED_MIME_TYPES = {
 }
 
 # AI configurations
-EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+EMBEDDING_MODEL_NAME = "BAAI/bge-large-en-v1.5"
 
 # Entity Statuses (pipeline processing state of a resume/JD/analysis)
 STATUS_UPLOADED = "Uploaded"

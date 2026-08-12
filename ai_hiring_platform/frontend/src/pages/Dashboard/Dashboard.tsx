@@ -5,7 +5,7 @@ import type { HistoryRecord, DashboardOverview } from '../../types';
 import type { PageId } from '../../components/layout/navConfig';
 import { fetchHistory } from '../../api/history';
 import { fetchDashboardOverview } from '../../api/dashboard';
-import { getScoreColor } from '../../components/analysis/scoreColors';
+import { formatScore, getScoreColor } from '../../components/analysis/scoreColors';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatCard } from '../../components/ui/StatCard';
 import { Card } from '../../components/ui/Card';
@@ -152,7 +152,7 @@ export const Dashboard: FC<DashboardProps> = ({ onNavigate }) => {
           icon={<Cpu className="h-6 w-6" />}
           iconClass="bg-emerald-500/10 text-emerald-400"
           label="Embeddings"
-          value="BGE-small (local)"
+          value="BGE-large (local)"
           badge={<Badge tone="success">Active</Badge>}
         />
         <StatCard
@@ -213,7 +213,7 @@ export const Dashboard: FC<DashboardProps> = ({ onNavigate }) => {
                         r.overall_score,
                       )}`}
                     >
-                      {r.overall_score}
+                      {formatScore(r.overall_score)}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-white">{r.resume_filename}</span>

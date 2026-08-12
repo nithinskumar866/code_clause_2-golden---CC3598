@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import type { AnalysisReport } from '../../types';
 import { getScoreBarBg, getScoreLabel, REQUIREMENT_STATUS_HEX } from './scoreColors';
+import { MatchScoreBreakdown } from './MatchScoreBreakdown';
 import { ScoreRing } from '../charts/ScoreRing';
 import { SubScoreRadar } from '../charts/SubScoreRadar';
 import { RequirementDonut } from '../charts/RequirementDonut';
@@ -12,17 +13,20 @@ interface ScoreOverviewProps {
 
 interface SubScore {
   label: string;
-  weight: string;
   value: number;
 }
 
 /** Overall score ring, weighted sub-score bars, radar and requirement donut. */
 export const ScoreOverview: FC<ScoreOverviewProps> = ({ report }) => {
+  // Evidence sub-scores. These no longer decide the headline number — the Match
+  // Score does — but they are what the strengths, weaknesses, learning roadmap and
+  // interview questions are reasoned from, so they stay visible and unweighted.
   const subScores: SubScore[] = [
-    { label: 'Requirement Coverage', weight: '35%', value: report.coverage_score },
-    { label: 'Experience Alignment', weight: '25%', value: report.experience_score },
-    { label: 'Project Relevance', weight: '20%', value: report.project_score },
-    { label: 'Evidence Confidence', weight: '15%', value: report.confidence_score },
+    { label: 'Requirement Coverage', value: report.coverage_score },
+    { label: 'Experience Alignment', value: report.experience_score },
+    { label: 'Project Relevance', value: report.project_score },
+    { label: 'Evidence Confidence', value: report.confidence_score },
+    { label: 'Resume Quality', value: report.quality_score },
   ];
 
   const radarData = subScores.map((s) => ({ label: s.label.split(' ')[0], value: s.value }));
@@ -44,38 +48,65 @@ export const ScoreOverview: FC<ScoreOverviewProps> = ({ report }) => {
 
   return (
     <div className="space-y-6">
-      {/* Overall score + weighted sub-score bars */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="rounded-xl border border-white/5 bg-card p-5 flex flex-col items-center justify-center text-center">
-          <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-3">Overall Score</span>
+      {/* Match Score: the ring, then the nine parameters that produced it. */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-white/5 bg-card p-5 text-center">
+          <span className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            Match Score
+          </span>
           <ScoreRing score={report.overall_score} />
-          <span className="text-xs text-gray-400 mt-3 font-semibold uppercase tracking-wide">
-            {getScoreLabel(report.overall_score)}
+          <span className="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            {report.match_score?.band ?? getScoreLabel(report.overall_score)}
+          </span>
+          <span className="mt-1 text-[10px] text-gray-600">
+            {report.overall_score.toFixed(1)} / 100
           </span>
         </div>
 
-        <div className="md:col-span-2 rounded-xl border border-white/5 bg-card p-5 space-y-3.5">
-          <h3 className="text-xs font-semibold text-white uppercase tracking-wider border-b border-white/5 pb-2">
-            Explainable Metric Breakdown
+        <div className="md:col-span-2">
+          {report.match_score ? (
+            <MatchScoreBreakdown match={report.match_score} />
+          ) : (
+            /* Reports evaluated before Match Score existed carry no parameters.
+               Saying so is better than rendering nine empty rows. */
+            <div className="h-full rounded-xl border border-white/5 bg-card p-5">
+              <h3 className="border-b border-white/5 pb-2 text-xs font-semibold uppercase tracking-wider text-white">
+                Match Score Breakdown
+              </h3>
+              <p className="pt-3 text-xs leading-relaxed text-gray-400">
+                This analysis was produced before the nine-parameter Match Score existed, so only
+                the overall number is available. Re-run the evaluation to get the full breakdown.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Evidence sub-scores — what the written report reasons from. */}
+      <div className="rounded-xl border border-white/5 bg-card p-5 space-y-3.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/5 pb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-white">
+            Evidence Sub-scores
           </h3>
-          <div className="space-y-2.5 text-xs text-gray-300">
-            {subScores.map((s) => (
-              <div key={s.label} className="space-y-1">
-                <div className="flex justify-between font-medium">
-                  <span>
-                    {s.label} (Weight {s.weight}):
-                  </span>
-                  <span className="font-semibold">{s.value}%</span>
-                </div>
-                <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-full ${getScoreBarBg(s.value)}`}
-                    style={{ width: `${Math.max(0, Math.min(100, s.value))}%` }}
-                  />
-                </div>
+          <span className="text-[10px] text-gray-500">
+            Behind the written report · not part of the Match Score
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-x-6 gap-y-2.5 text-xs text-gray-300 sm:grid-cols-2">
+          {subScores.map((s) => (
+            <div key={s.label} className="space-y-1">
+              <div className="flex justify-between font-medium">
+                <span>{s.label}</span>
+                <span className="font-semibold tabular-nums">{s.value}%</span>
               </div>
-            ))}
-          </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+                <div
+                  className={`h-full ${getScoreBarBg(s.value)}`}
+                  style={{ width: `${Math.max(0, Math.min(100, s.value))}%` }}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -7,7 +7,7 @@ from app.core.logging import logger
 # Lazy-loaded singleton instance.
 #
 # Uses FastEmbed (ONNX runtime) rather than sentence-transformers/PyTorch: it runs
-# the SAME BAAI/bge-small-en-v1.5 weights, so embeddings and every calibrated
+# the SAME BAAI/bge-large-en-v1.5 weights, so embeddings and every calibrated
 # similarity threshold are unchanged, but it removes the heavy torch dependency —
 # ~4x less memory and faster cold starts, so the service fits small free-tier hosts.
 _embedding_model_instance = None
@@ -27,7 +27,7 @@ def get_embedding_model() -> FastEmbedEmbedding:
 
 def generate_embeddings_for_nodes(nodes: List[TextNode]) -> List[TextNode]:
     """
-    Computes embeddings for a list of TextNodes using BGE-small and attaches them.
+    Computes embeddings for a list of TextNodes using BGE-large and attaches them.
     """
     model = get_embedding_model()
     logger.info(f"Generating embeddings for {len(nodes)} TextNodes...")

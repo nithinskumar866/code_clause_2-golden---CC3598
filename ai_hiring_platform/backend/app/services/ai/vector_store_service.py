@@ -72,15 +72,15 @@ def has_valid_index(resume_id: int, fingerprint: Optional[str] = None) -> bool:
 def save_nodes_to_index(nodes: List[TextNode], resume_id: int, fingerprint: Optional[str] = None) -> VectorStoreIndex:
     """
     Builds a FAISS index from TextNodes and persists it to disk.
-    Dimension for BGE-small embeddings is 384. When ``fingerprint`` is given it is
+    Dimension for BGE-large embeddings is 1024. When ``fingerprint`` is given it is
     recorded alongside the index so future loads can verify the source matches.
     """
     persist_dir = get_persist_dir(resume_id)
     logger.info(f"Creating new FAISS vector store index under {persist_dir}")
 
     try:
-        # BGE-small embedding dimension is 384
-        d = 384
+        # BGE-large embedding dimension is 1024
+        d = 1024
         # Flat Inner Product index for cosine similarity ranking
         faiss_index = faiss.IndexFlatIP(d)
         

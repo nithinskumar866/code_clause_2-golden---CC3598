@@ -40,8 +40,9 @@ def test_repo_overall_statistics(db_session):
 
 
 def test_repo_recommendation_counts(db_session):
+    # One per bucket under the Match Score bands: Selected >= 70, Borderline >= 50.
     _seed(db_session, overall=95)
-    _seed(db_session, overall=70)
+    _seed(db_session, overall=60)
     _seed(db_session, overall=30)
     assert repo.recommendation_counts(db_session) == (1, 1, 1)
 
@@ -76,12 +77,12 @@ def test_repo_daily_counts_windowed(db_session):
 
 def test_service_overall_statistics(db_session):
     _seed(db_session, overall=90, coverage=80, experience=70, project=60, quality=100)
-    _seed(db_session, overall=70, coverage=60, experience=40, project=20, quality=80)
+    _seed(db_session, overall=60, coverage=60, experience=40, project=20, quality=80)
     _seed(db_session, overall=30, coverage=10, experience=0, project=0, quality=60)
     stats = analytics_service.get_overall_statistics(db_session)
     assert stats.total_analyses == 3
     assert (stats.selected, stats.borderline, stats.rejected) == (1, 1, 1)
-    assert stats.average_overall_score == round((90 + 70 + 30) / 3, 2)
+    assert stats.average_overall_score == round((90 + 60 + 30) / 3, 2)
     assert stats.average_coverage_score == round((80 + 60 + 10) / 3, 2)
 
 

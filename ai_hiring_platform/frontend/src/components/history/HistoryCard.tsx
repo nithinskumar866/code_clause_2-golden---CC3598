@@ -1,7 +1,13 @@
 import type { FC } from 'react';
 import { Clock, FileText, Briefcase, Trash2 } from 'lucide-react';
 import type { HistoryRecord } from '../../types';
-import { getScoreColor, getScoreLabel, classifyFit, FIT_CATEGORY_STYLE } from '../analysis/scoreColors';
+import {
+  formatScore,
+  getScoreColor,
+  getScoreLabel,
+  classifyFit,
+  FIT_CATEGORY_STYLE,
+} from '../analysis/scoreColors';
 
 interface HistoryCardProps {
   record: HistoryRecord;
@@ -44,9 +50,9 @@ export const HistoryCard: FC<HistoryCardProps> = ({ record, onOpen, onDelete }) 
 
       <div className="flex items-center gap-4">
         <div
-          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 text-lg font-extrabold ${getScoreColor(record.overall_score)}`}
+          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 text-base font-extrabold ${getScoreColor(record.overall_score)}`}
         >
-          {record.overall_score}
+          {formatScore(record.overall_score)}
         </div>
         <div className="min-w-0 space-y-1">
           <p className="flex items-center gap-1.5 text-sm font-medium text-white">

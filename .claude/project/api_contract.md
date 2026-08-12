@@ -26,8 +26,10 @@ Base URL: `/api/v1`. Every response is wrapped in the envelope below.
 
 `HiringReport` (`schemas/analysis.py`):
 ```
-overall_score, coverage_score, experience_score, project_score,
-confidence_score, quality_score : int (0-100)
+overall_score : float (0-100, ONE DECIMAL) -- the Match Score
+match_score : MatchScore | null           -- its nine-parameter decomposition
+coverage_score, experience_score, project_score,
+confidence_score, quality_score : int (0-100)   -- evidence sub-scores, not the headline
 summary : string
 requirements : RequirementFit[]
 strengths, weaknesses, skill_relationships, missing_skills, interview_questions : string[]
@@ -37,6 +39,23 @@ rejection_email : string | null
 authenticity : AuthenticityAssessment | null
 candidate_profile : CandidateProfile | null
 ```
+`MatchScore` / `MatchParameter` (deterministic; see `docs/Match_Score.md`):
+```
+MatchScore  : { score : float, band : string, parameters : MatchParameter[] }
+MatchParameter : {
+  key          : "skill"|"experience"|"technology"|"designation"|"industry"
+               |"education"|"location"|"availability"|"freshness"
+  label        : string
+  weight       : float   -- 0.20, 0.15, 0.14, 0.14, 0.09, 0.08, 0.08, 0.07, 0.05
+  score        : float   -- 0-100, one decimal
+  contribution : float   -- score x weight
+  basis        : string  -- recruiter-readable reason
+  neutral      : bool    -- the JD never stated this requirement
+}
+```
+Bands: >=85 Excellent fit · >=70 Strong fit · >=50 Moderate fit · else Weak fit.
+`match_score` is null on analyses produced before this contract existed.
+
 `CandidateProfile` (deterministic identity + seniority fit):
 ```
 name, title : string | null

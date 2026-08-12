@@ -16,11 +16,78 @@ class Settings:
     #   LLM_MODEL:    explicit model id; blank -> a sensible per-provider default
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "")
+    # Optional OpenAI-COMPATIBLE base URL (Ollama, vLLM, LM Studio, RunPod, LocalAI...).
+    # When set, reasoning is served by that endpoint instead of a hosted provider —
+    # a self-hosted Llama needs no API key, so LLM_API_KEY may stay blank.
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "").rstrip("/")
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
+    # Wall-clock ceiling for one reasoning call. Self-hosted GPUs cold-start slowly,
+    # so this is generous; the caller always falls back to the deterministic engine.
+    LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     # Accept either GOOGLE_API_KEY or GEMINI_API_KEY for the Google Gemini provider.
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
     
+    # --- Embedding engine (see services/ai/embedding_engines.py) ----------------
+    # 'bge'  : local BAAI/bge-large-en-v1.5, in-process, 1024 dims. Default; offline.
+    # 'gpu'  : a model served from an Ollama-compatible endpoint, higher fidelity.
+    # Vectors from the two are NOT interchangeable, so each engine owns its own
+    # corpus index. Selecting 'gpu' with an unreachable endpoint falls back to 'bge'
+    # and says so — it never silently searches the wrong index.
+    EMBEDDING_ENGINE: str = os.getenv("EMBEDDING_ENGINE", "bge")
+    EMBEDDING_GPU_URL: str = os.getenv("EMBEDDING_GPU_URL", "").rstrip("/")
+    EMBEDDING_GPU_MODEL: str = os.getenv("EMBEDDING_GPU_MODEL", "")
+    # Must match the model's real output size, or every search silently misaligns.
+    EMBEDDING_GPU_DIM: int = int(os.getenv("EMBEDDING_GPU_DIM", "768"))
+    EMBEDDING_GPU_TIMEOUT_SECONDS: float = float(os.getenv("EMBEDDING_GPU_TIMEOUT_SECONDS", "60"))
+    EMBEDDING_GPU_BATCH: int = int(os.getenv("EMBEDDING_GPU_BATCH", "32"))
+    # Cosine floor for the GPU model. Every model has its own similarity distribution,
+    # so this CANNOT be shared with RETRIEVAL_MIN_SIMILARITY. Measured on
+    # nomic-embed-text: relevant pairs >= 0.592, unrelated <= 0.426; 0.51 sits in that
+    # gap. Reusing BGE's 0.62 here silently discarded real matches.
+    EMBEDDING_GPU_MIN_SIMILARITY: float = float(os.getenv("EMBEDDING_GPU_MIN_SIMILARITY", "0.51"))
+
+    # --- mxbai-embed-large-v1 (local, 1024 dims) ---------------------------
+    # Floor calibrated to EQUAL SELECTIVITY with BGE rather than picked by feel: 0.537
+    # is where mxbai admits the same fraction of query-chunk pairs that BGE admits at
+    # 0.62, measured over 279 chunks of this project's real resumes. Comparing models
+    # on a shared threshold would reward whichever one scores higher in absolute terms,
+    # which says nothing about ranking quality.
+    EMBEDDING_MXBAI_MIN_SIMILARITY: float = float(os.getenv("EMBEDDING_MXBAI_MIN_SIMILARITY", "0.537"))
+    # 8, not FastEmbed's default 256: a 335M-parameter model at 512 tokens asked ONNX
+    # Runtime for a 1.15 GB activation buffer and died. This is a correctness setting,
+    # and it costs nothing — measured on real resume chunks (~450 chars), throughput is
+    # flat at ~1.9 chunks/s from batch 8 through 64, because the work is CPU-bound
+    # rather than batching-bound. Budget roughly 45 minutes to index 600 resumes with
+    # this model the first time; afterwards only new resumes are embedded.
+    # (FastEmbed's `parallel=` multiprocessing would help, but it deadlocks on Windows
+    # and is unsafe inside a request worker, so it is deliberately not used.)
+    EMBEDDING_MXBAI_BATCH: int = int(os.getenv("EMBEDDING_MXBAI_BATCH", "8"))
+
+    # --- Automatic indexing -------------------------------------------------
+    # A resume becomes searchable by every available model as soon as it is uploaded,
+    # on a background thread. This is what makes one store serve every screen: nothing
+    # asks the recruiter to "index" on a second page, and no section re-embeds what
+    # another section already embedded.
+    #
+    # Turn OFF only when you want to control embedding cost explicitly (e.g. loading a
+    # few thousand CVs before a demo, then indexing once). The Model Lab indexing
+    # controls remain available either way.
+    AUTO_INDEX_ON_UPLOAD: bool = os.getenv("AUTO_INDEX_ON_UPLOAD", "true").lower() == "true"
+    # One incremental pass at boot, so a store that predates a model catches up without
+    # anyone pressing a button. Costs a fingerprint scan when everything is current.
+    AUTO_INDEX_ON_STARTUP: bool = os.getenv("AUTO_INDEX_ON_STARTUP", "true").lower() == "true"
+    # How many files an upload may contain before indexing stops being automatic.
+    #
+    # A handful of CVs should just work — waiting for someone to press a button is the
+    # friction that made the pool look empty. A 300-file backlog is a different thing
+    # entirely: mxbai embeds at ~1.9 chunks/second, so a full pass is around 40 minutes,
+    # and which of those 300 are worth that cost is a decision only the recruiter can
+    # make. Above this threshold the files are stored and left OUT of the working set,
+    # for selection on the Documents screen.
+    AUTO_INDEX_MAX_BATCH: int = int(os.getenv("AUTO_INDEX_MAX_BATCH", "20"))
+
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'hiring_platform.db')}")
     
@@ -30,12 +97,75 @@ class Settings:
     # Upload folder
     UPLOAD_DIR: str = os.path.join(BASE_DIR, "temp_uploads")
     
+    # --- Match Score weights (must sum to 1.00) --------------------------------
+    # The nine dimensions a candidate is scored on against a specific JD. This is
+    # the headline number the platform reports, and the weights are the agreed
+    # specification — change them only by agreement, because two people using
+    # different weights cannot compare a candidate at all.
+    #
+    # Ordering reflects what actually decides a hire: what they can do (Skill 20 +
+    # Technology 14 = 34%), how far along they are (Experience 15 + Designation 14
+    # = 29%), then context (Industry 9, Education 8, Location 8, Availability 7),
+    # with Freshness at 5% acting as a tie-breaker rather than a real signal.
+    MATCH_WEIGHT_SKILL: float = 0.20
+    MATCH_WEIGHT_EXPERIENCE: float = 0.15
+    MATCH_WEIGHT_TECHNOLOGY: float = 0.14
+    MATCH_WEIGHT_DESIGNATION: float = 0.14
+    MATCH_WEIGHT_INDUSTRY: float = 0.09
+    MATCH_WEIGHT_EDUCATION: float = 0.08
+    MATCH_WEIGHT_LOCATION: float = 0.08
+    MATCH_WEIGHT_AVAILABILITY: float = 0.07
+    MATCH_WEIGHT_FRESHNESS: float = 0.05
+
+    # Neutral scores, used when the JD or the resume is SILENT about a dimension.
+    # A requirement nobody stated must not be able to fail a candidate, so silence
+    # scores mid-range rather than zero. These are not defaults for a *failed*
+    # comparison — a candidate in the wrong city still scores low, they just are
+    # not treated the same as a candidate whose city is unknown.
+    MATCH_NEUTRAL_SKILL: float = 50.0
+    MATCH_NEUTRAL_FRESHNESS: float = 50.0
+    MATCH_NEUTRAL_LOCATION: float = 50.0
+    MATCH_NEUTRAL_AVAILABILITY: float = 50.0
+    MATCH_NEUTRAL_INDUSTRY: float = 50.0
+    MATCH_NEUTRAL_EDUCATION: float = 50.0
+    MATCH_NEUTRAL_DESIGNATION: float = 50.0
+    MATCH_NEUTRAL_EXPERIENCE: float = 50.0
+    # The resume, not the JD, is silent about when the candidate can start. That is
+    # a small negative signal rather than a neutral one: the employer asked and the
+    # candidate did not say.
+    MATCH_MISSING_AVAILABILITY: float = 40.0
+    # A candidate in a different city is still reachable — relocation happens — so
+    # the floor is 20, not 0.
+    MATCH_LOCATION_DIFFERENT: float = 20.0
+
+    # Penalty slopes.
+    MATCH_EXPERIENCE_PENALTY_PER_YEAR: float = 15.0
+    MATCH_AVAILABILITY_PENALTY_PER_WEEK: float = 10.0
+    # Freshness decays from 100 at upload to this floor over MATCH_FRESHNESS_DAYS.
+    MATCH_FRESHNESS_FLOOR: float = 40.0
+    MATCH_FRESHNESS_DAYS: float = 365.0
+    # Credit for a requirement matched only through a spelling mistake.
+    MATCH_PARTIAL_SKILL_CREDIT: float = 0.6
+
+    # Interpretation bands over the final Match Score. (label, inclusive minimum),
+    # highest first — the first band the score reaches wins.
+    MATCH_SCORE_BANDS = [
+        ("Excellent fit", 85.0),
+        ("Strong fit", 70.0),
+        ("Moderate fit", 50.0),
+        ("Weak fit", 0.0),
+    ]
+
     # Compatibility score weights
-    WEIGHT_COVERAGE: float = 0.35
+    # Coverage is the primary signal (does the candidate have the skills?).
+    # Experience measures narrative evidence depth (not just section presence).
+    # Projects is reduced — many roles (sysadmin, ops) have no Projects section.
+    # Quality (authenticity/keyword-stuffing) is given more influence.
+    WEIGHT_COVERAGE: float = 0.40
     WEIGHT_EXPERIENCE: float = 0.25
-    WEIGHT_PROJECTS: float = 0.20
+    WEIGHT_PROJECTS: float = 0.10
     WEIGHT_CONFIDENCE: float = 0.15
-    WEIGHT_QUALITY: float = 0.05
+    WEIGHT_QUALITY: float = 0.10
 
     # Retrieval ranking weights (Must sum to 1.0)
     RETRIEVAL_WEIGHT_SIMILARITY: float = 0.70
@@ -63,7 +193,7 @@ class Settings:
     # with no genuinely-relevant chunk yields zero matches and is correctly reported
     # as "Missing" rather than a weak "Partial" backed by an unrelated chunk.
     #
-    # Calibrated for BGE-small: genuine same-domain matches score ~0.62+, whereas
+    # Calibrated for BGE-large: genuine same-domain matches score ~0.62+, whereas
     # loosely-related cross-domain tech (e.g. a React resume vs a "python" query)
     # sits ~0.56-0.61. A 0.30 floor let unrelated tech pass, so an off-domain resume
     # spuriously "matched" every requirement. 0.62 separates real evidence from noise.
@@ -72,8 +202,13 @@ class Settings:
     # Dashboard analytics decision buckets (over overall_score 0-100).
     # Selected: score >= SELECTED_MIN; Rejected: score < BORDERLINE_MIN;
     # Borderline: everything in between. Trends window is DASHBOARD_TRENDS_DAYS days.
-    DASHBOARD_SELECTED_MIN: int = int(os.getenv("DASHBOARD_SELECTED_MIN", "80"))
-    DASHBOARD_BORDERLINE_MIN: int = int(os.getenv("DASHBOARD_BORDERLINE_MIN", "60"))
+    #
+    # Aligned to MATCH_SCORE_BANDS: Selected covers Strong and Excellent (>= 70),
+    # Borderline is Moderate (>= 50), Rejected is Weak. These MUST track the bands —
+    # a dashboard that calls a candidate "Rejected" while their report reads
+    # "Strong fit" is reporting two different opinions as one fact.
+    DASHBOARD_SELECTED_MIN: int = int(os.getenv("DASHBOARD_SELECTED_MIN", "70"))
+    DASHBOARD_BORDERLINE_MIN: int = int(os.getenv("DASHBOARD_BORDERLINE_MIN", "50"))
     DASHBOARD_TRENDS_DAYS: int = int(os.getenv("DASHBOARD_TRENDS_DAYS", "30"))
 
     # Analytics windows/limits and optional result cache.
@@ -95,7 +230,7 @@ class Settings:
     TRANSFER_SAME_CATEGORY_BOOST: float = 0.10
 
     # Skill relationship reasoning (evaluation_service transfer/equivalence logic).
-    # Calibrated on BGE-small skill-name cosine: near-synonyms (SQL/MySQL/PostgreSQL)
+    # Calibrated on BGE-large skill-name cosine: near-synonyms (SQL/MySQL/PostgreSQL)
     # sit ~0.81-0.84, adjacent-but-distinct skills (Docker/Kubernetes 0.70,
     # PyTorch/TensorFlow 0.72, Python/Django 0.73) sit ~0.68-0.75.
     #   >= EQUIVALENCE : candidate effectively already has the skill (rescue a Missing

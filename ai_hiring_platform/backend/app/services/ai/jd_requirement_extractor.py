@@ -45,6 +45,8 @@ _CUE_BEFORE = re.compile(rf"((?:{_WORD}\s+){{0,2}}{_WORD})\s+{_CUE}\b", re.I)
 _CAP_PHRASE = re.compile(r"\b([A-Z][A-Za-z0-9+#./-]*(?:\s+(?:&\s+)?[A-Z][A-Za-z0-9+#./-]*){0,3})\b")
 # Seniority: "5+ years", "3 years" -> a first-class requirement.
 _YEARS = re.compile(r"(\d+)\s*\+?\s*years?", re.I)
+# "7+ years" specifically — an explicit floor, preferred over a bare range.
+_YEARS_PLUS = re.compile(r"(\d+)\s*\+\s*years?", re.I)
 # Splits an object phrase into individual skills.
 _SPLIT = re.compile(r"\s*(?:,|/|&|\band\b|\bor\b)\s*", re.I)
 
@@ -66,15 +68,46 @@ _STOP = {
     "engineer", "engineers", "developer", "developers", "architect", "analyst",
     "manager", "designer", "scientist", "administrator", "specialist", "lead",
     "intern", "consultant", "senior", "junior", "mid", "level", "position", "job",
+    # Job-posting metadata footers ("Experience | Location | Employment Type").
+    "location", "employment", "type", "salary", "compensation", "benefits", "remote",
+    "onsite", "hybrid", "fulltime", "parttime", "contract", "department", "reports",
+    "handson",
 }
 
 _MAX_WORDS = 4     # a requirement phrase is at most this many words
 _MAX_RESULTS = 40  # guard against runaway extraction on very large JDs
 
+# Sentence boundary inside a JD line. Cue patterns must never span one: a JD that
+# reads "...high-availability environments. Experience supporting Java..." otherwise
+# yields the nonsense requirement "high-availability environments. Experience
+# supporting", because the "<object> <cue>" pattern reaches across the full stop.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?;:])\s+")
+
+# Responsibility verbs that open a bullet ("Monitor system availability...",
+# "Contribute to initiatives..."). These are the GRAMMAR of a duty statement, not a
+# competency, so a sentence-initial one must never become a requirement. Sentence
+# position is what disqualifies them — the same word mid-sentence is left alone.
+_DUTY_VERB = re.compile(
+    r"^(?:administer|maintain|monitor|support|plan|execute|automate|analyz|analys|use|"
+    r"collaborat|troubleshoot|contribute|manage|improve|ensure|deliver|build|create|"
+    r"develop|design|implement|coordinate|participat|provide|perform|conduct|lead|"
+    r"drive|own|handle|assist|help|work|report|document|review|test|deploy|configure|"
+    r"install|upgrade|migrate|optimiz|optimis|resolve|respond|track|measure|seek)",
+    re.I,
+)
+
+
+def _sentences(text: str) -> List[str]:
+    """Split a line into sentences so phrase patterns cannot reach across a full stop."""
+    return [s.strip() for s in _SENTENCE_SPLIT.split(text or "") if s.strip()]
+
 
 def _clean_phrase(raw: str) -> str:
     """Normalise a candidate phrase: trim junk tokens, cap length, drop if empty/filler."""
-    tokens = [t for t in re.split(r"\s+", raw.strip()) if t]
+    # Trailing punctuation makes "Google Cloud." and "google cloud" two different
+    # requirements, so the same skill gets scored (and shown) twice.
+    raw = raw.strip().strip(".,;:!?()[]\"'")
+    tokens = [t for t in re.split(r"\s+", raw) if t]
     # Strip leading/trailing pure-stopword tokens (keep interior, e.g. "ci/cd").
     while tokens and re.sub(r"[^a-z0-9]", "", tokens[0].lower()) in _STOP:
         tokens.pop(0)
@@ -83,10 +116,14 @@ def _clean_phrase(raw: str) -> str:
     tokens = tokens[:_MAX_WORDS]
     if not tokens:
         return ""
-    phrase = " ".join(tokens).strip(" -,/&")
+    phrase = " ".join(tokens).strip(" -,/&.")
     # Reject if every token is filler or it is a lone very-short non-tech token.
     words = [re.sub(r"[^a-z0-9]", "", w.lower()) for w in phrase.split()]
     if all(w in _STOP or len(w) < 2 for w in words):
+        return ""
+    # A lone duty verb is never a competency. "We are seeking an experienced System
+    # Administrator" otherwise yields the requirement "seeking".
+    if len(words) == 1 and _DUTY_VERB.match(words[0]):
         return ""
     return phrase
 
@@ -135,22 +172,39 @@ def extract_requirements(jd_text: str) -> List[str]:
             add(term)
 
     # --- Layer 2: grammar-driven extraction from requirement lines ---
+    # Applied SENTENCE BY SENTENCE. Running the cue patterns over joined lines let
+    # them straddle full stops and manufacture phrases the JD never stated.
     req_lines = _requirement_lines(jd_text)
-    joined = "\n".join(req_lines)
+    known_lc = {t.lower() for t in _TAXONOMY_TERMS}
 
-    for m in _CUE_AFTER.finditer(joined):
-        for part in _SPLIT.split(m.group(1)):
-            add(_clean_phrase(part))
-    for m in _CUE_BEFORE.finditer(joined):
-        add(_clean_phrase(m.group(1)))
-    for ln in req_lines:
-        for m in _CAP_PHRASE.finditer(ln):
-            add(_clean_phrase(m.group(1)))
+    for line in req_lines:
+        for sentence in _sentences(line):
+            for m in _CUE_AFTER.finditer(sentence):
+                for part in _SPLIT.split(m.group(1)):
+                    add(_clean_phrase(part))
+            for m in _CUE_BEFORE.finditer(sentence):
+                add(_clean_phrase(m.group(1)))
+
+            for m in _CAP_PHRASE.finditer(sentence):
+                phrase = m.group(1)
+                # A capitalised word at the START of a sentence is capitalised by
+                # grammar, not because it is a proper noun. "Monitor system
+                # availability..." is a duty, not a skill called "Monitor". Real
+                # technologies in that position are still caught by Layer 1.
+                if m.start() == 0:
+                    first = phrase.split()[0]
+                    if first.lower() not in known_lc and _DUTY_VERB.match(first):
+                        continue
+                add(_clean_phrase(phrase))
 
     # Seniority requirement (captures "5+ years experience" — invisible to taxonomy).
-    yrs = [int(m.group(1)) for m in _YEARS.finditer(jd_text)]
+    # Use the LOWEST stated bar, not the highest: a JD reading "7+ years" in the
+    # requirements and "7-10 Years" in the footer is asking for 7, and scoring a
+    # candidate against 10 understates every applicant.
+    explicit = [int(m.group(1)) for m in _YEARS_PLUS.finditer(jd_text)]
+    yrs = explicit or [int(m.group(1)) for m in _YEARS.finditer(jd_text)]
     if yrs:
-        add(f"{max(yrs)}+ years experience")
+        add(f"{min(yrs)}+ years experience")
 
 
     # Drop a bare single-word phrase that is merely a fragment of a longer kept
@@ -160,15 +214,84 @@ def extract_requirements(jd_text: str) -> List[str]:
     multiword_tokens = {
         tok for v in found for tok in v.split() if len(v.split()) > 1
     }
-    result = sorted(
-        (
-            v for k, v in found.items()
-            if len(v.split()) > 1 or k in known or k not in multiword_tokens
-        ),
-        key=lambda s: s.lower(),
-    )
+    kept = [
+        v for k, v in found.items()
+        if len(v.split()) > 1 or k in known or k not in multiword_tokens
+    ]
+    result = sorted(_collapse_variants(kept, known), key=lambda s: s.lower())
     logger.info(f"Extracted {len(result)} requirements: {result}")
     return result
+
+
+# Words that only qualify a skill and carry no requirement of their own, so
+# "practical knowledge of Java" and "Java-based applications" are the SAME ask as
+# "Java". Grammar/boilerplate, not a skill list.
+_QUALIFIER = {
+    "based", "practical", "working", "hands", "on", "supporting", "support", "related",
+    "technical", "solutions", "solution", "applications", "application", "systems",
+    "system", "tools", "tool", "environments", "environment", "concepts", "concept",
+    "fundamentals", "practices", "practice", "principles", "knowledge", "experience",
+    "exposure", "proficiency", "expertise", "familiarity", "usage", "use", "using",
+    "for", "scripting", "development", "and", "or", "of", "in", "with",
+    "the", "a", "an", "strong", "good", "solid", "deep", "advanced", "basic",
+    # Compound qualifiers: "AI-assisted", "AI-enabled", "cloud-based", "data-driven".
+    "assisted", "enabled", "driven", "oriented", "focused", "centric", "aware",
+    "ready", "native", "level", "grade", "class", "side", "end",
+}
+
+
+def _collapse_variants(phrases: List[str], known: set) -> List[str]:
+    """
+    Merge phrases that restate the same requirement.
+
+    A single JD sentence about Java produced five separate "requirements" — `java`,
+    `Java-based applications`, `Java-based technical solutions.`, `practical knowledge
+    of Java`, `supporting Java-based technical solutions.` — each then scored and
+    rendered independently. That inflates the requirement count, dilutes coverage, and
+    is most of why the report reads as a wall of near-identical rows.
+
+    Rule: strip qualifier words from a phrase; if what remains is exactly one known
+    skill, the phrase IS that skill and collapses into it. Phrases with genuine extra
+    content are left alone.
+    """
+    def core_of(phrase: str) -> List[str]:
+        return [w for w in re.split(r"[\s/&-]+", phrase.lower()) if w and w not in _QUALIFIER]
+
+    # Step 1: phrases whose stripped core is identical ARE the same requirement,
+    # whether or not the skill is in the taxonomy ("AI" / "AI-assisted" both -> ai).
+    by_core: Dict[tuple, str] = {}
+    for phrase in phrases:
+        key = tuple(sorted(set(core_of(phrase))))
+        if not key:
+            continue
+        existing = by_core.get(key)
+        if existing is None or len(phrase) < len(existing):
+            by_core[key] = phrase
+
+    canonical: Dict[str, str] = {}   # lowercase skill -> display form
+    passthrough: List[str] = []
+
+    for key, phrase in by_core.items():
+        # A single-token core is that skill itself; it becomes the canonical form that
+        # longer qualified variants collapse into.
+        if len(key) == 1:
+            canonical[key[0]] = phrase
+        else:
+            passthrough.append(phrase)
+
+    # A pass-through phrase that merely repeats an already-canonical skill plus
+    # qualifiers adds nothing either (e.g. "Java-based applications" once "java" is in).
+    out = list(canonical.values())
+    seen_lc = {v.lower() for v in out}
+    for phrase in passthrough:
+        core = set(core_of(phrase))
+        if core and core <= set(canonical):
+            continue
+        if phrase.lower() in seen_lc:
+            continue
+        seen_lc.add(phrase.lower())
+        out.append(phrase)
+    return out
 
 
 # ---------------------------------------------------------------------------

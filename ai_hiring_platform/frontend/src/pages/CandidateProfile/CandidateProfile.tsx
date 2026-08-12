@@ -6,7 +6,7 @@ import { downloadReportJSON, downloadReportPDF } from '../../lib/report';
 import { WorkflowStatusControl } from '../../components/workflow/WorkflowStatusControl';
 import { RecruiterNotes } from '../../components/notes/RecruiterNotes';
 import { useToast } from '../../components/ui/toast-context';
-import { getScoreColor, getScoreBarBg, getScoreLabel, classifyFit } from '../../components/analysis/scoreColors';
+import { formatScore, getScoreColor, getScoreBarBg, getScoreLabel, classifyFit } from '../../components/analysis/scoreColors';
 import type { FitCategory } from '../../components/analysis/scoreColors';
 import { ScoreRing } from '../../components/charts/ScoreRing';
 import { StrengthsWeaknesses } from '../../components/analysis/StrengthsWeaknesses';
@@ -228,7 +228,7 @@ const ProfileBody: FC<{ report: AnalysisReport; record: HistoryRecord }> = ({ re
               <MetaRow
                 icon={<Star className="h-4 w-4" />}
                 label="Overall Score"
-                value={`${report.overall_score}%`}
+                value={`${formatScore(report.overall_score)}%`}
               />
             </dl>
           </div>

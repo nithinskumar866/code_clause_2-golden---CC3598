@@ -9,7 +9,7 @@ also keeps evaluation logic in one place (single source of truth) shared by
 both the single-evaluate route and ranking.
 """
 import os
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.constants import RESUME_UPLOAD_DIR, JOB_UPLOAD_DIR, STATUS_ANALYSED, STATUS_FAILED
@@ -20,7 +20,9 @@ from app.schemas.ranking import RankingEntry, RankingResponse
 from app.workflows.hiring_workflow import execute_hiring_pipeline
 
 
-def run_evaluation(db: Session, resume_id: int, jd_id: int) -> Tuple[int, Dict[str, Any]]:
+def run_evaluation(
+    db: Session, resume_id: int, jd_id: int, embedding_engine: Optional[str] = None
+) -> Tuple[int, Dict[str, Any]]:
     """
     Validate inputs, run the full LangGraph hiring pipeline for one resume × one
     JD, persist status, and return (analysis_id, final_report). Raises
@@ -56,6 +58,8 @@ def run_evaluation(db: Session, resume_id: int, jd_id: int) -> Tuple[int, Dict[s
         final_report = execute_hiring_pipeline(
             resume_id=resume_id, resume_path=resume_path,
             jd_id=jd_id, jd_path=jd_path, analysis_id=db_analysis.id,
+            embedding_engine=embedding_engine,
+            resume_uploaded_at=db_resume.upload_time,
         )
         db_analysis.status = STATUS_ANALYSED
         db_resume.status = "Indexed"
@@ -84,7 +88,7 @@ def _entry_from_report(resume: Resume, analysis_id: int, report: Dict[str, Any])
         analysis_id=analysis_id,
         resume_id=resume.id,
         resume_filename=resume.filename,
-        overall_score=int(report.get("overall_score", 0) or 0),
+        overall_score=round(float(report.get("overall_score", 0) or 0), 1),
         coverage_score=int(report.get("coverage_score", 0) or 0),
         experience_score=int(report.get("experience_score", 0) or 0),
         project_score=int(report.get("project_score", 0) or 0),

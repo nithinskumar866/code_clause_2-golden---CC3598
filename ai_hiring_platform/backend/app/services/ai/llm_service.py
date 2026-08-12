@@ -56,10 +56,96 @@ def resolve_model(provider: str) -> str:
     return (settings.LLM_MODEL or "").strip() or _DEFAULT_MODEL.get(provider, "")
 
 
+class _CompletionResponse:
+    """Minimal stand-in for a llama-index CompletionResponse (`.text`)."""
+
+    __slots__ = ("text",)
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def __str__(self) -> str:  # pragma: no cover - convenience only
+        return self.text
+
+
+class OpenAICompatibleLLM:
+    """
+    Client for any OpenAI-compatible `/chat/completions` endpoint — Ollama, vLLM,
+    LM Studio, LocalAI, a RunPod proxy, or OpenAI itself.
+
+    Exposes the same `.complete(prompt) -> obj.text` surface as the llama-index LLMs,
+    so reasoning code never learns where the model is hosted. Implemented directly on
+    httpx (already a dependency) rather than through a provider integration, because
+    self-hosted model ids (`llama3.1:8b`) are not in any vendor's model registry and
+    would otherwise trip context-window lookups.
+    """
+
+    def __init__(self, base_url: str, model: str, api_key: str = "", timeout: float = 120.0) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.api_key = api_key
+        self.timeout = timeout
+
+    @property
+    def _endpoint(self) -> str:
+        base = self.base_url
+        if not base.endswith("/v1"):
+            base = f"{base}/v1"
+        return f"{base}/chat/completions"
+
+    def complete(self, prompt: str, system: str = "", temperature: float = 0.2) -> _CompletionResponse:
+        import httpx
+
+        messages = ([{"role": "system", "content": system}] if system else []) + [
+            {"role": "user", "content": prompt}
+        ]
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        resp = httpx.post(
+            self._endpoint,
+            headers=headers,
+            json={"model": self.model, "messages": messages, "temperature": temperature},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        try:
+            return _CompletionResponse(payload["choices"][0]["message"]["content"])
+        except (KeyError, IndexError, TypeError) as e:
+            raise RuntimeError(f"Unexpected completion payload from {self._endpoint}: {payload}") from e
+
+    def health(self) -> bool:
+        """True when the endpoint answers a trivial prompt — used by /chat/health."""
+        try:
+            return bool(self.complete("ping", temperature=0.0).text)
+        except Exception as e:
+            logger.warning(f"LLM health check failed for {self._endpoint}: {e}")
+            return False
+
+
 def get_llm() -> Optional[object]:
     """
     Build the configured LLM, or return None to signal the deterministic fallback.
+
+    A configured `LLM_BASE_URL` wins over the hosted providers: it means the operator
+    pointed the platform at their own OpenAI-compatible endpoint, and self-hosted
+    endpoints commonly need no API key.
     """
+    if settings.LLM_BASE_URL:
+        model = (settings.LLM_MODEL or "").strip()
+        if not model:
+            logger.warning("LLM_BASE_URL is set but LLM_MODEL is blank. Using deterministic engine.")
+            return None
+        logger.info(f"LLM ready: OpenAI-compatible endpoint '{settings.LLM_BASE_URL}', model='{model}'.")
+        return OpenAICompatibleLLM(
+            base_url=settings.LLM_BASE_URL,
+            model=model,
+            api_key=settings.LLM_API_KEY,
+            timeout=settings.LLM_TIMEOUT_SECONDS,
+        )
+
     provider = resolve_provider()
     if provider not in _API_KEY:
         logger.warning(f"Unknown or unset LLM_PROVIDER '{settings.LLM_PROVIDER}'. Using deterministic engine.")

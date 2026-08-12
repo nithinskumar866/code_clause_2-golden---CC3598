@@ -23,7 +23,7 @@ The workflow is compiled as a StateGraph containing two principal nodes. The orc
 └─────────────────────────────────┘
           │  ├── 1. Ingests Resume and Job Description
           │  ├── 2. Segment Resume text into TextNodes with metadata coordinates
-          │  ├── 3. Embed text chunks using BAAI/bge-small-en-v1.5
+          │  ├── 3. Embed text chunks using BAAI/bge-large-en-v1.5
           │  ├── 4. Search local FAISS index for each JD requirement
           │  └── 5. Write retrieved evidence chunks to Graph State
           │

@@ -103,9 +103,23 @@ def _render_pdf(report: dict) -> bytes:
     _write(f"Analysis ID: {report.get('analysis_id', '-')}", size=10, gap=10)
 
     _write("Scores", size=14, gap=6, bold=True)
+    match = report.get("match_score") or {}
     _write(
-        f"Overall: {report.get('overall_score', 0)}    "
-        f"Coverage: {report.get('coverage_score', 0)}    "
+        f"Match Score: {float(report.get('overall_score', 0) or 0):.1f}"
+        + (f" ({match['band']})" if match.get("band") else "")
+    )
+    # The nine parameters, each with the reasoning that produced it. An exported
+    # report that shows only the total is not defensible in a hiring conversation.
+    for p in match.get("parameters", []) or []:
+        _write(
+            f"  {p['label']} ({round(p['weight'] * 100)}%): {p['score']:.1f}"
+            + ("  [not stated in the JD]" if p.get("neutral") else ""),
+            size=9,
+        )
+        _write(f"    {p.get('basis', '')}", size=8, gap=4)
+
+    _write(
+        f"Evidence sub-scores — Coverage: {report.get('coverage_score', 0)}    "
         f"Experience: {report.get('experience_score', 0)}    "
         f"Project: {report.get('project_score', 0)}    "
         f"Quality: {report.get('quality_score', 0)}"

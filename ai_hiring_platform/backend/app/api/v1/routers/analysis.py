@@ -17,10 +17,19 @@ from app.services.ai import interview_service
 router = APIRouter()
 
 @router.post("/evaluate", response_model=ApiResponse[dict])
-def evaluate_candidate(resume_id: int, jd_id: int, db: Session = Depends(get_db)):
+def evaluate_candidate(
+    resume_id: int,
+    jd_id: int,
+    embedding_engine: Optional[str] = Query(
+        None,
+        description="'bge' (fast, local), 'mxbai' (large, local) or 'gpu'. "
+                    "Defaults to EMBEDDING_ENGINE. Evidence is gathered with this model.",
+    ),
+    db: Session = Depends(get_db),
+):
     """Run the full LangGraph pipeline for one resume × one JD and return the report."""
     logger.info(f"LangGraph State Evaluation Pipeline triggered for Resume ID: {resume_id}, JD ID: {jd_id}")
-    analysis_id, final_report = ranking_service.run_evaluation(db, resume_id, jd_id)
+    analysis_id, final_report = ranking_service.run_evaluation(db, resume_id, jd_id, embedding_engine)
     return ApiResponse[dict](
         success=True,
         message="Candidate evaluation completed successfully via LangGraph workflow.",
