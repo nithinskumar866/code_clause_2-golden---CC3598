@@ -24,6 +24,20 @@ class Settings:
     # Wall-clock ceiling for one reasoning call. Self-hosted GPUs cold-start slowly,
     # so this is generous; the caller always falls back to the deterministic engine.
     LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
+    # --- Named self-hosted runtimes (Ollama now, RunPod later) ------------------
+    # Both endpoints are configured at once and selected by LLM_RUNTIME, so moving
+    # between a laptop's Ollama and a rented GPU is one env var and no redeploy.
+    #   LLM_RUNTIME: auto | ollama | runpod | api
+    #   'auto' prefers runpod, then ollama, then the hosted provider — whichever is
+    #   actually configured. Explicit values never silently fall through, because a
+    #   benchmark that quietly ran on the wrong runtime is worse than one that fails.
+    LLM_RUNTIME: str = os.getenv("LLM_RUNTIME", "auto").strip().lower()
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "")
+    RUNPOD_BASE_URL: str = os.getenv("RUNPOD_BASE_URL", "").rstrip("/")
+    RUNPOD_MODEL: str = os.getenv("RUNPOD_MODEL", "")
+    RUNPOD_API_KEY: str = os.getenv("RUNPOD_API_KEY", "")
+
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     # Accept either GOOGLE_API_KEY or GEMINI_API_KEY for the Google Gemini provider.
@@ -87,6 +101,26 @@ class Settings:
     # make. Above this threshold the files are stored and left OUT of the working set,
     # for selection on the Documents screen.
     AUTO_INDEX_MAX_BATCH: int = int(os.getenv("AUTO_INDEX_MAX_BATCH", "20"))
+
+    # --- Company intelligence module (services/company/*) ----------------------
+    # A SEPARATE knowledge base: employer/company records in Qdrant Cloud, reached
+    # only when the recruiter flips the chat into company mode. It shares nothing
+    # with the candidate pool — different store, different collection, different
+    # retrieval path — so nothing here can affect resume search.
+    #
+    # The collection's vector size is fixed at creation time to the GPU engine's
+    # dimension (nomic-embed-text, 768). That is why this module never falls back to
+    # the local 384-dim engine: a fallback would either be rejected by Qdrant or,
+    # worse, silently search a 768-dim space with 384-dim meaning.
+    QDRANT_URL: str = os.getenv("QDRANT_URL", "").rstrip("/")
+    QDRANT_API_KEY: str = os.getenv("QDRANT_API_KEY", "")
+    QDRANT_COMPANIES_COLLECTION: str = os.getenv("QDRANT_COMPANIES_COLLECTION", "companies")
+    QDRANT_TIMEOUT_SECONDS: float = float(os.getenv("QDRANT_TIMEOUT_SECONDS", "30"))
+    # Cosine floor for company retrieval. Held apart from the resume floors because it
+    # is calibrated on a different corpus: company prose is short, dense and written in
+    # marketing register, so its similarity distribution is not the resume one.
+    COMPANY_MIN_SIMILARITY: float = float(os.getenv("COMPANY_MIN_SIMILARITY", "0.45"))
+    COMPANY_TOP_K: int = int(os.getenv("COMPANY_TOP_K", "24"))
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'hiring_platform.db')}")
@@ -187,6 +221,35 @@ class Settings:
     HYBRID_WEIGHT_DENSE: float = float(os.getenv("HYBRID_WEIGHT_DENSE", "0.6"))
     HYBRID_WEIGHT_SPARSE: float = float(os.getenv("HYBRID_WEIGHT_SPARSE", "0.4"))
     HYBRID_RRF_K: int = int(os.getenv("HYBRID_RRF_K", "60"))
+
+    # --- LLM-assisted retrieval (see services/ai/chat_llm_retrieval.py) ---------
+    # A THIRD stage on top of dense+sparse: the model judges evidence and re-ranks
+    # the shortlist. Both default OFF, so the deterministic funnel is unchanged
+    # until a GPU is actually available — and remains the fallback on any failure.
+    #
+    # The model is never allowed to introduce a candidate or a passage. It only
+    # judges text that deterministic retrieval already returned, so a wrong verdict
+    # can reorder or demote a real candidate but can never invent one.
+    RETRIEVAL_LLM_VERIFY_ENABLED: bool = os.getenv("RETRIEVAL_LLM_VERIFY_ENABLED", "false").lower() == "true"
+    RETRIEVAL_LLM_RERANK_ENABLED: bool = os.getenv("RETRIEVAL_LLM_RERANK_ENABLED", "false").lower() == "true"
+    # Only the top slice is re-ranked: recall is the bi-encoder's job, precision is
+    # the model's, and paying for a judgement on candidate 300 buys nothing.
+    RETRIEVAL_LLM_RERANK_TOP_K: int = int(os.getenv("RETRIEVAL_LLM_RERANK_TOP_K", "50"))
+    # Share of the final score the model's relevance judgement carries. It enters as
+    # one more weighted component alongside Skill/Technology/Location/Experience, so
+    # it is renormalised with them and shows up in the recruiter's breakdown rather
+    # than silently moving the number.
+    MATCH_WEIGHT_LLM_RELEVANCE: float = float(os.getenv("MATCH_WEIGHT_LLM_RELEVANCE", "0.18"))
+    # Calls run concurrently — the .NET portal shipped a sequential per-item loop and
+    # it cost ~13 serial round trips per turn. Do not repeat that here.
+    RETRIEVAL_LLM_CONCURRENCY: int = int(os.getenv("RETRIEVAL_LLM_CONCURRENCY", "8"))
+    # Items per prompt. Batching cuts round trips; too large and small models start
+    # dropping entries from the JSON array.
+    RETRIEVAL_LLM_BATCH: int = int(os.getenv("RETRIEVAL_LLM_BATCH", "8"))
+    # Hard wall-clock ceiling for the WHOLE assisted stage. When it expires the
+    # deterministic ordering stands and the answer still goes out on time.
+    RETRIEVAL_LLM_DEADLINE_SECONDS: float = float(os.getenv("RETRIEVAL_LLM_DEADLINE_SECONDS", "20"))
+    RETRIEVAL_LLM_CACHE_SIZE: int = int(os.getenv("RETRIEVAL_LLM_CACHE_SIZE", "4096"))
 
     # Minimum raw cosine similarity (0..1) a retrieved chunk must clear to count as
     # evidence for a requirement. Matches below this are dropped, so a requirement

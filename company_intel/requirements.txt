@@ -1,0 +1,27 @@
+# --- API ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# --- the only database ---
+qdrant-client==1.12.2
+
+# --- crawling ---
+httpx==0.28.1
+trafilatura==2.0.0
+selectolax==0.3.27
+
+# --- embeddings (local, no key, no GPU) ---
+fastembed==0.5.1
+
+# --- scheduling ---
+apscheduler==3.11.0
+
+# --- answering (optional; the pipeline degrades to extractive answers without it) ---
+openai==1.59.6
+
+# --- dev ---
+pytest==8.3.4
+pytest-asyncio==0.25.2
+respx==0.22.0

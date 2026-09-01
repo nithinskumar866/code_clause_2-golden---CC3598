@@ -1,0 +1,84 @@
+# Storage for the RAG scoring mode.
+#
+# Two services, both bound to 127.0.0.1 ONLY. Neither is reachable from the
+# network — the API talks to them over loopback, and anything that needs remote
+# access should go through a tunnel or a reverse proxy with its own auth, not by
+# widening these ports.
+#
+#   docker compose -f docker-compose.rag.yml up -d
+#   docker compose -f docker-compose.rag.yml down          (keeps the volumes)
+#   docker compose -f docker-compose.rag.yml down -v       (deletes the data)
+#
+# Credentials come from the environment. The defaults below are DEVELOPMENT
+# values and are fine on a laptop; set the real ones in the shell or a .env file
+# beside this one before this runs anywhere else:
+#
+#   RAG_POSTGRES_PASSWORD=...      RAG_QDRANT_API_KEY=...
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: rag-qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"   # HTTP + dashboard
+      - "127.0.0.1:6334:6334"   # gRPC — what the .NET client uses
+    environment:
+      # With a key set, every request must carry it. Qdrant is unauthenticated by
+      # default, which is only survivable because of the loopback binding above;
+      # the key is the second lock.
+      QDRANT__SERVICE__API_KEY: ${RAG_QDRANT_API_KEY:-dev-only-change-me}
+      QDRANT__LOG_LEVEL: INFO
+      # Refuse writes rather than corrupt the collection when the disk fills.
+      QDRANT__STORAGE__PERFORMANCE__MAX_OPTIMIZATION_THREADS: 2
+    volumes:
+      - qdrant-storage:/qdrant/storage
+    healthcheck:
+      # /readyz reports readiness to serve, which is what we actually need to
+      # know; / answers before the collections are loadable.
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: ${RAG_POSTGRES_DB:-ragdb}
+      POSTGRES_USER: ${RAG_POSTGRES_USER:-raguser}
+      POSTGRES_PASSWORD: ${RAG_POSTGRES_PASSWORD:-dev-only-change-me}
+      # Postgres skips fsync-heavy defaults it does not need for this workload;
+      # chunks are re-derivable from the source documents, so durability here is
+      # worth less than ingestion throughput.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=256MB"
+      # 1.5M chunk rows with a text column — give the planner room to keep the
+      # parentId index hot.
+      - "-c"
+      - "effective_cache_size=1GB"
+      - "-c"
+      - "work_mem=16MB"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RAG_POSTGRES_USER:-raguser} -d ${RAG_POSTGRES_DB:-ragdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  qdrant-storage:
+    name: rag-qdrant-storage
+  postgres-data:
+    name: rag-postgres-data

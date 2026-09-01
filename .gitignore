@@ -37,6 +37,16 @@ ai_hiring_platform/backend/logs/
 /*-Amulya_Sahani_Resume.zip
 /DevOps_Engineer_Job_Description.docx
 
+# ---- Extracted-for-porting copies (generated, not source) ----
+/chatbot_extract/
+/chatbot_extract.zip
+/llm_logic/
+/llm_logic.zip
+/career_assistant_page/
+/career_assistant_page.zip
+/chatbot_brain/
+/chatbot_brain.zip
+
 # ---- OS / Editor ----
 .DS_Store
 Thumbs.db
@@ -46,3 +56,14 @@ Thumbs.db
 
 # ---- Per-worktree local guides (not merged into main) ----
 WORKTREE_README.md
+
+# --- Local archives and scratch artefacts (added for the v2 checkpoint) ---
+# The job_portal zips are 163MB and 173MB; GitHub hard-rejects blobs over 100MB,
+# and the sources they contain are already tracked in job_portal/.
+*.zip
+Screenshot*.png
+*.pkl
+
+# Playwright's Chromium download and per-project virtualenvs
+company_intel/.venv/
+company_intel/.env

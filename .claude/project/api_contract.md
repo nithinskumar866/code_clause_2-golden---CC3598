@@ -85,7 +85,49 @@ persisted before this field still validate (e.g. on export).
 ## Still backend-only (no UI yet — see roadmap)
 These endpoints exist, are tested, and return the shapes above but have no frontend surface: `/dashboard/*` aggregates, all `/analytics/*`, recruiter `/notes`, workflow `/status`, and server-side `/export/pdf`. Multi-candidate ranking is not implemented at all.
 
+
+## Prompt Lab (2026-08-21) — `/api/v1/prompt-lab/*`
+Mirrored in `frontend/src/types/index.ts` and consumed by `api/promptLab.ts`.
+
+| Method | Path | Body → Data |
+|---|---|---|
+| GET | `/rules` | → `RuleInfo[]` `{ id, title, description }` |
+| GET | `/starter` | → `{ name, prompt, cases }` — the prompt in the field + the turns exercising each clause |
+| POST | `/run` | `{ variants[{label,prompt}], cases[], temperature, rules?, suite_id?, persist }` → `RunResult` |
+| POST | `/score` | `{ prompt, case, answer, rules? }` → `ScoreResult` (deterministic; needs no LLM) |
+| GET/POST | `/suites` · POST/PUT/DELETE `/suites/{id}` | `Suite` `{ id, name, description, prompt, cases, created_at, updated_at }` |
+| GET | `/runs?suite_id=&limit=` · `/runs/{id}` | `RunSummary[]` · `RunDetail` (adds `results`) |
+
+`PromptCase`: `{ id?, name?, question, context, history[{role,content}], expectations }`.
+`CaseExpectations`: `{ max_lines, max_chars, link_allowed, link_required, years_known, expected_years, jobs_requested, list_allowed, skills_requested, must_contain[], must_not_contain[] }` — properties of the TURN, never of the prompt, so one suite grades any rewrite.
+`RuleVerdict.status` is `pass | fail | na`; `score` is over applicable rules only and is `null` when none applied — render it as a dash, never as 0% or 100%.
+`RunResult`: `{ variants[VariantResult], deltas[RuleDelta], llm_available, model }`. With no LLM configured the call still succeeds with `llm_available:false` and empty answers — the lab reports a missing model rather than faking one.
+
 ## Change protocol
 1. Backend edits schema + endpoint, keeps tests green, records it in `decisions.md` and appends a note in `session_log.md`.
 2. Frontend mirrors into `types/index.ts` and wires the UI.
 3. QA verifies the round trip end-to-end.
+
+## `/api/v1/company-chat` — company knowledge base (optional module)
+
+Backend owns `backend/app/schemas/company_chat.py`; frontend mirrors it in
+`src/types/index.ts` (`CompanyResult`, `CompanyChatResponse`, `CompanyStoreStatus`).
+Kept separate from the chat contract on purpose — a company and a candidate share no
+fields, and one union type would force every UI branch to check which half it holds.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/company-chat/query` | Answer one question → `CompanyChatResponse` |
+| POST | `/company-chat/stream` | Same, streaming real pipeline stages as SSE |
+| POST | `/company-chat/reset` | Forget a company conversation's follow-up memory |
+| GET | `/company-chat/status` | `CompanyStoreStatus` — configured / reachable / populated |
+| GET | `/company-chat/companies` | `[{company_id, company_name}]` |
+| POST | `/company-chat/refresh` | Re-read the name index after a load, no restart |
+
+`CompanyChatResponse.mode` is `company` (the question named one), `open` (pool-wide
+search) or `none` (refused before retrieval). `engine` is `llm` or `deterministic` —
+the FACTS are identical either way; only the prose differs, because the model is never
+allowed to supply a fact.
+
+Ingest is a CLI script, not an endpoint: `python -m scripts.load_companies <file.xlsx>`
+drops and rebuilds the collection from the sheet.

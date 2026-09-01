@@ -109,3 +109,47 @@ Verify: pytest **363 pass**, build **ok**, lint **ok**. Three pre-existing failu
 <slice/feature>. <files touched at a high level>. Contract change: <yes/no + note>.
 Verify: pytest <n pass>, build <ok/fail>, integration <ok/fail>.
 ```
+
+## 2026-08-21 · Prompt Lab (backend + frontend)
+Added a Prompt Lab tab to test the person/employee-query system prompt that was misbehaving in the field.
+- Backend: `services/ai/prompt_rules_service.py` (deterministic 14-rule grader, stdlib only), `services/ai/prompt_lab_service.py` (generation + suite run + A/B deltas + the starter suite), `schemas/prompt_lab.py`, `api/v1/routers/prompt_lab.py` (`/rules`, `/starter`, `/run`, `/score`, `/suites`, `/runs`), `PromptSuite` + `PromptRun` tables, `tests/test_prompt_lab.py`.
+- Frontend: `pages/PromptLab/*` (Compliance & A/B · Test cases · Playground · Regression history), `api/promptLab.ts`, types mirrored, nav route `promptlab`.
+- Verified: frontend build exit 0, oxlint clean, 67 vitest tests pass; the rule engine's 35 assertions exercised standalone. Backend pytest NOT run — no Python environment with the backend dependencies exists on this machine (the venv path in CLAUDE.md §12 points at an `E:` drive that is not present).
+
+## 2026-08-27 · Company intelligence module (Qdrant Cloud)
+
+Added an opt-in second knowledge base to the chatbot: employer/company records in
+Qdrant Cloud, reached only via a hard mode toggle on the Chat page. The candidate
+pipeline is untouched — `chat_service.py`, retrieval, guardrails, FAISS, the two agents
+and the LangGraph workflow have no knowledge of this module.
+
+**New:** `services/company/{qdrant_store,excel_loader,company_retrieval,company_chat}.py`,
+`schemas/company_chat.py`, `routers/company_chat.py`, `scripts/load_companies.py`,
+`tests/test_company_module.py` (21 tests), `api/companyChat.ts`,
+`pages/Chat/CompanyChat.tsx`, `components/chat/{CompanyCard,ChatModeToggle}.tsx`.
+**Touched:** `config.py` (+7 settings), `main.py` (+1 router), `requirements.txt`
+(qdrant-client, openpyxl), `embedding_engines.py` (+`gpu_engine_strict`, additive),
+`types/index.ts` (+contract mirror), `Chat.tsx` (mode state + toggle + early return).
+
+**Loaded:** `IT_Companies_Database.xlsx` → 60 companies, 420 points, 768d nomic.
+**Verified:** 590 backend tests pass (569 before + 21 new); the same 6 failures were
+already failing on a clean tree — they are driven by the operator's configured `.env`,
+not by this work. Frontend build exit 0, oxlint clean.
+
+**Known limit, accepted by decision:** people are payload-only inside the company
+record, so a question naming only a person is an exact-match lookup rather than a
+semantic one. Adding person vectors later is a re-ingest, not a redesign.
+
+### 2026-08-27 (follow-up) · People became searchable, not just stored
+Reversed the payload-only people decision after seeing it concretely: each person now
+also becomes one point in the SAME `companies` collection (`field="person"`), embedding
+their name, employer and every attribute the sheet carried. The people table still sits
+in every company payload — this adds a searchable copy rather than moving anything.
+Loader change only, no redesign, as predicted.
+
+The people sheet convention: a sheet named People/Employees/Staff/Contacts, one column
+named Company/Company Name/Employer, a Name column, and any other columns you like —
+they all become person fields automatically.
+
+**Verified:** 594 backend tests pass (25 in the company module, up from 21); the same 6
+pre-existing failures. No reload was needed — the current sheet has no people yet.

@@ -3,7 +3,9 @@ import {
   HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel,
 } from '@microsoft/signalr';
 import { PORTAL_API_BASE } from './api';
-import type { JobSuggestionResult, MatchResult, Thought, UiAction } from './types';
+import type {
+  FollowUp, JobSuggestionResult, MatchResult, ScoringMode, Thought, UiAction,
+} from './types';
 import type { NavOption } from './navigator';
 
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
@@ -18,6 +20,8 @@ export interface ChatTurn {
   matches: MatchResult | null;
   /** Postings offered when there is no CV yet. Carries no fit score. */
   suggestions: JobSuggestionResult | null;
+  /** Questions worth asking next. Distinct from `suggestions`, which are ROLES. */
+  followUps: FollowUp[];
   streaming: boolean;
   error?: string;
   /** Pages offered as buttons — set on turns the app answered by itself. */
@@ -38,6 +42,9 @@ export interface UseChatHub {
   busy: boolean;
   send: (message: string) => Promise<void>;
   analyzeResume: (resumeId: number) => Promise<void>;
+  /** Which scorer the next question will use. */
+  scoringMode: ScoringMode;
+  setScoringMode: (mode: ScoringMode) => void;
   /**
    * Adds an exchange the app answered itself, into the same transcript as the
    * hub's replies. Navigation is answered here rather than over the socket, so
@@ -78,11 +85,27 @@ export function useChatHub(
   const [state, setState] = useState<ConnectionState>('idle');
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [scoringMode, setScoringMode] = useState<ScoringMode>('computed');
 
   const connectionRef = useRef<HubConnection | null>(null);
   const pendingRef = useRef<string>('');
   const frameRef = useRef<number | null>(null);
   const turnIdRef = useRef<string | null>(null);
+
+  // Sent with every invocation, so a mode chosen mid-conversation applies to the
+  // next question without a separate round trip to set it.
+  const modeRef = useRef<ScoringMode>(scoringMode);
+  modeRef.current = scoringMode;
+
+  /**
+   * Which turn each shortlist belongs to, keyed by the batch id the server sends.
+   *
+   * Deliberately NOT cleared when a turn ends. Reasoned scoring keeps judging
+   * roles for a minute or two after the reply is finished, and those updates have
+   * to reach the cards they belong to — which by then are several turns back, and
+   * unreachable through the streaming turn pointer that `End` nulls out.
+   */
+  const matchTurnsRef = useRef(new Map<string, string>());
 
   // Held in a ref so a caller passing an inline arrow does not tear down and
   // rebuild the whole hub connection on every render.
@@ -143,6 +166,20 @@ export function useChatHub(
     });
 
     connection.on('Matches', (matches: MatchResult) => {
+      // A batch already seen belongs to a turn that may no longer be the streaming
+      // one — this is the background pass filling in the roles it had not judged
+      // yet. Patch that turn by id rather than the current one, or the extra
+      // candidates would either vanish or attach themselves to whatever question
+      // the candidate happened to ask in the meantime.
+      const known = matches.batchId ? matchTurnsRef.current.get(matches.batchId) : undefined;
+      if (known) {
+        setTurns(previous => previous.map(turn => (turn.id === known ? { ...turn, matches } : turn)));
+        if (matches.complete) matchTurnsRef.current.delete(matches.batchId);
+        return;
+      }
+
+      const id = turnIdRef.current;
+      if (id && matches.batchId && !matches.complete) matchTurnsRef.current.set(matches.batchId, id);
       patchCurrent(turn => ({ ...turn, matches }));
     });
 
@@ -150,6 +187,12 @@ export function useChatHub(
     // UI cannot accidentally render a fit score for someone it knows nothing about.
     connection.on('Suggestions', (suggestions: JobSuggestionResult) => {
       patchCurrent(turn => ({ ...turn, suggestions }));
+    });
+
+    // Questions, not roles. A separate event from 'Suggestions' so the UI cannot
+    // render one as the other.
+    connection.on('FollowUps', (followUps: FollowUp[]) => {
+      patchCurrent(turn => ({ ...turn, followUps }));
     });
 
     connection.on('UiAction', (action: UiAction) => {
@@ -203,7 +246,7 @@ export function useChatHub(
     turnIdRef.current = id;
     pendingRef.current = '';
     setTurns(previous => [...previous, {
-      id, role: 'assistant', content: '', thoughts: [], matches: null, suggestions: null, streaming: true,
+      id, role: 'assistant', content: '', thoughts: [], matches: null, suggestions: null, followUps: [], streaming: true,
     }]);
     setBusy(true);
   }, []);
@@ -221,7 +264,7 @@ export function useChatHub(
 
     setTurns(previous => [...previous, {
       id: `u-${Date.now()}`, role: 'user', content: trimmed,
-      thoughts: [], matches: null, suggestions: null, streaming: false,
+      thoughts: [], matches: null, suggestions: null, followUps: [], streaming: false,
     }]);
 
     beginAssistantTurn();
@@ -233,7 +276,7 @@ export function useChatHub(
     }
 
     try {
-      await connection.invoke('SendMessage', sessionId, trimmed);
+      await connection.invoke('SendMessage', sessionId, trimmed, modeRef.current);
     } catch (error) {
       failCurrent(error instanceof Error ? error.message : 'The message could not be sent.');
     }
@@ -250,7 +293,7 @@ export function useChatHub(
     }
 
     try {
-      await connection.invoke('AnalyzeResume', sessionId, resumeId);
+      await connection.invoke('AnalyzeResume', sessionId, resumeId, modeRef.current);
     } catch (error) {
       failCurrent(error instanceof Error ? error.message : 'The resume could not be analysed.');
     }
@@ -263,24 +306,30 @@ export function useChatHub(
       ...(exchange.user
         ? [{
             id: `u-${stamp}`, role: 'user' as const, content: exchange.user,
-            thoughts: [], matches: null, suggestions: null, streaming: false,
+            thoughts: [], matches: null, suggestions: null, followUps: [], streaming: false,
           }]
         : []),
       {
         id: `l-${stamp}`, role: 'assistant' as const, content: exchange.assistant,
-        thoughts: [], matches: null, suggestions: null, streaming: false, options: exchange.options,
+        thoughts: [], matches: null, suggestions: null, followUps: [], streaming: false, options: exchange.options,
       },
     ]);
   }, []);
 
   const clearTurns = useCallback(() => {
     // Any in-flight turn is abandoned along with the transcript, so a reply that
-    // lands after a reset cannot patch a turn that no longer exists.
+    // lands after a reset cannot patch a turn that no longer exists. The batch map
+    // goes with it for the same reason: a background pass still running has nothing
+    // left to fill in.
     turnIdRef.current = null;
     pendingRef.current = '';
+    matchTurnsRef.current.clear();
     setTurns([]);
     setBusy(false);
   }, []);
 
-  return { state, turns, busy, send, analyzeResume, appendLocal, clearTurns };
+  return {
+    state, turns, busy, send, analyzeResume, appendLocal, clearTurns,
+    scoringMode, setScoringMode,
+  };
 }

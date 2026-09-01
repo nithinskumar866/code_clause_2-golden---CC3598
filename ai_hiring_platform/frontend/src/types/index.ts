@@ -772,3 +772,346 @@ export interface ResumeContent {
   sections: ResumeSection[];
   chunks: number;
 }
+
+
+/* ------------------------------------------------------------------ Prompt Lab --
+ * Mirrors backend `schemas/prompt_lab.py` (Golden Rule 9: the backend owns the shape).
+ *
+ * A case carries what the turn PERMITS, not what the prompt says, which is what lets
+ * the same suite grade a rewritten prompt without itself being rewritten.
+ */
+
+export interface CaseExpectations {
+  max_lines: number | null;
+  max_chars: number | null;
+  link_allowed: boolean;
+  link_required: boolean;
+  years_known: boolean;
+  expected_years: string | null;
+  jobs_requested: boolean;
+  list_allowed: boolean;
+  skills_requested: boolean;
+  must_contain: string[];
+  must_not_contain: string[];
+}
+
+export interface PromptCase {
+  id?: string;
+  name?: string;
+  question: string;
+  context: string;
+  history: { role: string; content: string }[];
+  expectations: CaseExpectations;
+}
+
+export interface PromptVariant {
+  label: string;
+  prompt: string;
+}
+
+/** pass | fail | na — `na` means the rule had nothing to say about this turn. */
+export type RuleStatus = 'pass' | 'fail' | 'na';
+
+export interface RuleVerdict {
+  rule: string;
+  title: string;
+  status: RuleStatus;
+  reason: string;
+}
+
+export interface PromptCaseResult {
+  case_id: string;
+  name: string;
+  question: string;
+  answer: string;
+  error: string | null;
+  latency_ms: number;
+  rules: RuleVerdict[];
+  passed: number;
+  failed: number;
+  not_applicable: number;
+  score: number | null;
+  violations: string[];
+}
+
+export interface RuleBreakdown {
+  rule: string;
+  title: string;
+  passed: number;
+  failed: number;
+  not_applicable: number;
+  score: number | null;
+}
+
+export interface VariantResult {
+  label: string;
+  prompt_hash: string;
+  cases: PromptCaseResult[];
+  total_cases: number;
+  clean_cases: number;
+  passed: number;
+  failed: number;
+  score: number | null;
+  by_rule: RuleBreakdown[];
+  errors: string[];
+}
+
+export interface RuleDelta {
+  rule: string;
+  title: string;
+  baseline_score: number | null;
+  variant_score: number | null;
+  delta: number | null;
+}
+
+export interface PromptRunResult {
+  variants: VariantResult[];
+  deltas: RuleDelta[];
+  llm_available: boolean;
+  model: string;
+}
+
+export interface PromptScoreResult {
+  rules: RuleVerdict[];
+  passed: number;
+  failed: number;
+  not_applicable: number;
+  score: number | null;
+  violations: string[];
+}
+
+export interface PromptRuleInfo {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface PromptSuite {
+  id: number;
+  name: string;
+  description: string;
+  prompt: string;
+  cases: PromptCase[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StarterSuite {
+  name: string;
+  prompt: string;
+  cases: PromptCase[];
+}
+
+export interface PromptRunSummary {
+  id: number;
+  suite_id: number | null;
+  label: string;
+  prompt_hash: string;
+  model: string;
+  total_cases: number;
+  clean_cases: number;
+  passed: number;
+  failed: number;
+  score: number | null;
+  created_at: string;
+}
+
+export interface PromptRunDetail extends PromptRunSummary {
+  results: VariantResult;
+}
+
+// ---------------------------------------------------------------------------
+// Company knowledge base (`/api/v1/company-chat`) — mirrors
+// `backend/app/schemas/company_chat.py`.
+//
+// A separate, opt-in corpus of employer records held in Qdrant. Deliberately NOT
+// merged with the candidate chat types: a company and a candidate share no fields,
+// and one union type would force every branch of the UI to check which half it holds.
+// ---------------------------------------------------------------------------
+
+/** One retrieved field of one company — the audit trail behind a claim. */
+export interface CompanyFieldMatch {
+  field: string;
+  label: string;
+  text: string;
+  score: number;
+}
+
+/** One company, reassembled from the field-level hits that matched. */
+export interface CompanyResult {
+  company_id: string;
+  company_name: string;
+  relevance: number;
+  best_field: string;
+  matches: CompanyFieldMatch[];
+  /** The whole stored row, so any field can be shown without another request. */
+  fields: Record<string, string>;
+  industries: string[];
+  people: Record<string, unknown>[];
+}
+
+export interface CompanyChatResponse {
+  answer: string;
+  companies: CompanyResult[];
+  /** 'company' when the question named one, 'open' for a pool-wide search. */
+  mode: string;
+  /** 'llm' when a model phrased the answer. The facts are identical either way. */
+  engine: string;
+  refused: boolean;
+  refusal_category: string | null;
+  is_followup: boolean;
+  stats: Record<string, unknown>;
+  elapsed_ms: number;
+}
+
+export interface CompanyStoreStatus {
+  configured: boolean;
+  reachable: boolean;
+  collection: string;
+  points: number;
+  companies: number;
+  vector_size: number;
+  detail: string;
+}
+
+/** One rendered turn of the company conversation. */
+export interface CompanyTurn {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  companies?: CompanyResult[];
+  mode?: string;
+  engine?: string;
+  refused?: boolean;
+  isFollowup?: boolean;
+  elapsedMs?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Web company intelligence — mirrors `company_intel/app/api/schemas.py`.
+//
+// A SEPARATE SERVICE, not part of this backend. It crawls company websites into its
+// own Qdrant collections and answers from them; the browser reaches it directly at
+// `VITE_COMPANY_INTEL_URL`. Kept apart from the `Company*` types above on purpose —
+// those describe rows of a spreadsheet, these describe pages of a website, and the
+// citation for each is a different thing (a stored field vs a live URL).
+// ---------------------------------------------------------------------------
+
+/** One passage retrieved from one crawled page — the audit trail behind a claim. */
+export interface WebMatch {
+  page_url: string;
+  page_title: string;
+  /** home · about · products · services · clients · careers · leadership · news · contact · other */
+  page_type: string;
+  /** The heading path the passage sat under, e.g. "Products > CRM". */
+  section: string;
+  text: string;
+  score: number;
+}
+
+/** One company, reassembled from the page-level hits that matched. */
+export interface WebCompanyResult {
+  company_id: string;
+  company_name: string;
+  relevance: number;
+  matches: WebMatch[];
+}
+
+/** A numbered source behind the answer. The answer text refers to these as [1], [2]. */
+export interface WebCitation {
+  n: number;
+  company_id: string;
+  company_name: string;
+  page_url: string;
+  page_title: string;
+  page_type: string;
+  section: string;
+  score: number;
+}
+
+export interface WebChatResponse {
+  answer: string;
+  refused: boolean;
+  /** 'company' when the question named one, 'pool' for a search across all, 'none' if refused. */
+  scope: string;
+  company: Record<string, unknown> | null;
+  companies: WebCompanyResult[];
+  citations: WebCitation[];
+  evidence_count: number;
+  intent: string;
+  /** false when no LLM is configured — the answer is then quoted directly from sources. */
+  llm_used: boolean;
+  duration_seconds: number;
+}
+
+/** A registered company and where its content is crawled from. */
+export interface WebCompany {
+  company_id: string;
+  name: string;
+  domain: string;
+  seed_urls: string[];
+  /** Stored and shown as links only. This service never fetches LinkedIn. */
+  linkedin_urls: string[];
+  allow_patterns: string[];
+  deny_patterns: string[];
+  enabled: boolean;
+  /** Fetch this company's pages through a headless browser. Opt-in; slow. */
+  render: boolean;
+  /**
+   * Set by the crawler when most of a company's pages turned out to hold identical
+   * content — the signature of a site that renders in the browser. Diagnosis, not
+   * configuration: it explains why a corpus is thin.
+   */
+  client_rendered: boolean;
+  created_at: number | null;
+  updated_at: number | null;
+}
+
+/** What has actually been crawled for one company. */
+export interface WebCompanyStatus {
+  company: WebCompany;
+  pages_known: number;
+  pages_by_status: Record<string, number>;
+  pages_by_type: Record<string, number>;
+  chunks: number;
+  last_crawled_at: number | null;
+  next_due_at: number | null;
+  failures: { url: string; error: string; fail_count: number }[];
+}
+
+/** Whether the crawler service is up, and what its store holds. */
+export interface WebHealth {
+  status: string;
+  qdrant: {
+    configured: boolean;
+    reachable: boolean;
+    collections: Record<string, number | null>;
+    detail: string;
+  };
+  embedding_model: string;
+  embedding_dim: number;
+  /** 'fastembed' (local CPU) or 'ollama' (remote GPU endpoint). */
+  embedding_provider: string;
+  /** False when a remote embedding endpoint is asleep — crawling AND search both stop. */
+  embedding_reachable: boolean;
+  embedding_detail: string;
+  /** 'none' | 'ollama' | 'openai'. 'none' means answers quote the sources verbatim. */
+  llm_provider: string;
+  llm_configured: boolean;
+  companies: number;
+  pages_due: number;
+}
+
+/** One rendered turn of the web conversation. */
+export interface WebTurn {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  companies?: WebCompanyResult[];
+  citations?: WebCitation[];
+  scope?: string;
+  refused?: boolean;
+  llmUsed?: boolean;
+  evidenceCount?: number;
+  durationSeconds?: number;
+}

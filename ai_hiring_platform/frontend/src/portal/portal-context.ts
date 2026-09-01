@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { ChatTurn, ConnectionState } from './useChatHub';
 import type { NavOption } from './navigator';
-import type { Health, JobFilters, ResumeProfile } from './types';
+import type { Health, JobFilters, ResumeProfile, ScoringMode } from './types';
 
 /**
  * The job portal's shared state, split from its provider so the provider module
@@ -24,6 +24,15 @@ export interface PortalState {
   send: (message: string) => Promise<void>;
   /** Opens a page the assistant offered as a button. */
   openPage: (option: NavOption, lead?: string) => void;
+
+  /**
+   * Which scorer the assistant uses — the measured arithmetic, or a model
+   * reasoning over the posting's requirements. Switchable mid-conversation:
+   * answers already on screen keep the mode they were produced under, and each
+   * card says which that was.
+   */
+  scoringMode: ScoringMode;
+  setScoringMode: (mode: ScoringMode) => void;
 
   /** Clears the conversation and its narrowed filters. The CV stays attached. */
   newConversation: () => Promise<void>;

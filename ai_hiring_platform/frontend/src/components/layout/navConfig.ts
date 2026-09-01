@@ -10,6 +10,7 @@ import {
   BarChart3,
   MessagesSquare,
   FlaskConical,
+  Gauge,
   FolderCog,
   Building2,
   Megaphone,
@@ -28,6 +29,7 @@ export type PageId =
   | 'profile'
   | 'analytics'
   | 'modellab'
+  | 'promptlab'
   | 'jobboard'
   | 'postjob'
   | 'applicants'
@@ -179,6 +181,13 @@ export const NAV_GROUPS: NavGroup[] = [
       icon: FlaskConical,
       description: 'Compare the embedding models against each other on the resumes they have all indexed.',
       keywords: ['model', 'models', 'lab', 'compare models', 'benchmark', 'embedding model', 'quality', 'experiment'],
+    },
+    {
+      id: 'promptlab',
+      name: 'Prompt Lab',
+      icon: Gauge,
+      description: 'Test a system prompt against a fixed set of turns and see, rule by rule, where it stops obeying itself.',
+      keywords: ['prompt', 'prompts', 'system prompt', 'instruction', 'compliance', 'prompt testing', 'test prompt', 'prompt quality', 'ab test', 'regression'],
     }],
   },
   {
@@ -206,6 +215,7 @@ export const PAGE_TITLES: Record<PageId, string> = {
   profile: 'Candidate Profile',
   analytics: 'Analytics',
   modellab: 'Model Lab',
+  promptlab: 'Prompt Lab',
   jobboard: 'Job Board',
   postjob: 'Post a Job',
   applicants: 'Applicants',

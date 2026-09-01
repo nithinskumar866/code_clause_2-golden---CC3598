@@ -3,6 +3,14 @@ import { UploadCloud } from 'lucide-react';
 
 interface FileDropProps {
   onFile: (file: File) => void;
+  /**
+   * Accept a whole batch. When set, `onFiles` receives every dropped or selected
+   * file and `onFile` is not called — a caller that can handle a batch should never
+   * also get a single-file callback for the first item, which is how you end up
+   * uploading file one twice.
+   */
+  onFiles?: (files: File[]) => void;
+  multiple?: boolean;
   /** Shown in place of the idle prompt while the file is being processed. */
   busy?: boolean;
   busyLabel?: string;
@@ -27,8 +35,17 @@ const ACCEPT = '.pdf,.docx,.txt,.md';
  * the cursor moves over the icon inside the zone.
  */
 export const FileDrop: FC<FileDropProps> = ({
-  onFile, busy = false, busyLabel = 'Working…', label, hint, className = '', compact = false,
+  onFile, onFiles, multiple = false,
+  busy = false, busyLabel = 'Working…', label, hint, className = '', compact = false,
 }) => {
+  /** One place that decides batch-vs-single, so drop and browse cannot diverge. */
+  const deliver = (list: FileList | null | undefined) => {
+    const files = Array.from(list ?? []);
+    if (!files.length || busy) return;
+    if (multiple && onFiles) onFiles(files);
+    else onFile(files[0]);
+  };
+
   const inputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
   const [dragActive, setDragActive] = useState(false);
@@ -42,8 +59,7 @@ export const FileDrop: FC<FileDropProps> = ({
     stop(event);
     dragCounter.current = 0;
     setDragActive(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file && !busy) onFile(file);
+    deliver(event.dataTransfer.files);
   };
 
   return (
@@ -79,12 +95,13 @@ export const FileDrop: FC<FileDropProps> = ({
         ref={inputRef}
         type="file"
         accept={ACCEPT}
+        multiple={multiple}
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
+          const chosen = e.target.files;
+          deliver(chosen);
           // Cleared so choosing the same file twice in a row still fires change.
           e.target.value = '';
-          if (file) onFile(file);
         }}
       />
       <UploadCloud className={`${compact ? 'h-5 w-5' : 'h-7 w-7'} text-indigo-400`} />

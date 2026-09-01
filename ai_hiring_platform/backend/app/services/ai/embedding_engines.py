@@ -313,6 +313,32 @@ def resolve_engine(requested: Optional[str] = None) -> EmbeddingEngine:
     return _LOCAL
 
 
+def gpu_engine_strict() -> GpuEndpointEngine:
+    """
+    The GPU engine or nothing — never a silent fallback to a local model.
+
+    `resolve_engine` deliberately degrades to BGE when the endpoint is down, because a
+    resume search returning slightly worse results beats one that fails. That trade is
+    wrong for a fixed-dimension external store: writing 384-dim vectors into a 768-dim
+    Qdrant collection is either rejected outright or, if the collection were ever built
+    at the wrong size, quietly searches the wrong semantic space. Callers that own such
+    a store must fail loudly instead, so they use this.
+    """
+    engine = _gpu_engine()
+    if engine is None:
+        raise RuntimeError(
+            "The GPU embedding engine is not configured. Set EMBEDDING_GPU_URL and "
+            "EMBEDDING_GPU_MODEL in .env."
+        )
+    if not engine.available():
+        raise RuntimeError(
+            f"The GPU embedding endpoint at {engine.base_url} is unreachable, so company "
+            f"records cannot be embedded or searched. No local fallback is used here: the "
+            f"Qdrant collection is fixed at {engine.dimension} dimensions."
+        )
+    return engine
+
+
 # Every engine the platform can index or search with, in display order.
 ENGINE_NAMES = ("bge", "mxbai", "gpu")
 

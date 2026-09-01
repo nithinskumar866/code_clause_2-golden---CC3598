@@ -1,9 +1,11 @@
 import type {
   ApiResponse, CreateJobRequest, Health, ImportResult, IndexStatus,
+  JobBulkUploadResult,
   JobDetail, JobFilters, JobSummary, JobUploadResult, MatchResult,
   ResumeProfile, ChatSession,
   Application, ApplicationPreview, ApplyPreviewRequest, ApplySubmitItem, ApplySubmitResult,
   JobSuggestionResult, DraftLetterResult,
+  ScreeningAnswer, ScreeningQuestionSet, ScreeningResult,
 } from './types';
 
 /**
@@ -66,6 +68,20 @@ export const portalApi = {
       .then(unwrap<JobUploadResult>);
   },
 
+  /**
+   * Upload several JDs in one request.
+   *
+   * Every file goes under the same `files` field name — that is what binds to the
+   * server's IFormFileCollection. Appending them as files[0], files[1] instead
+   * produces a request ASP.NET Core silently binds as empty.
+   */
+  uploadJobsBulk: (files: File[]): Promise<JobBulkUploadResult> => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    return fetch(`${PORTAL_API_BASE}/api/jobs/upload-bulk`, { method: 'POST', body: form })
+      .then(unwrap<JobBulkUploadResult>);
+  },
+
   createJob: (request: CreateJobRequest): Promise<JobDetail> =>
     fetch(`${PORTAL_API_BASE}/api/jobs`, {
       method: 'POST', headers: json, body: JSON.stringify(request),
@@ -110,6 +126,24 @@ export const portalApi = {
  * and stores nothing, so the candidate can see exactly what would be sent before
  * any of it is. Submitting is outward-facing and cannot be undone from here.
  */
+/**
+ * The pre-application gate.
+ *
+ * Four yes/no questions drawn from the posting, answered before the apply review
+ * opens. Separate from `applicationApi` because it is a separate decision: this
+ * asks whether the person WANTS the role on its stated terms, which no CV can say.
+ */
+export const screeningApi = {
+  /** The questions. Slow on first call for a posting; cached server-side after. */
+  questions: (jobId: number): Promise<ScreeningQuestionSet> =>
+    fetch(`${PORTAL_API_BASE}/api/jobs/${jobId}/screening`).then(unwrap<ScreeningQuestionSet>),
+
+  submit: (jobId: number, answers: ScreeningAnswer[]): Promise<ScreeningResult> =>
+    fetch(`${PORTAL_API_BASE}/api/jobs/${jobId}/screening`, {
+      method: 'POST', headers: json, body: JSON.stringify({ answers }),
+    }).then(unwrap<ScreeningResult>),
+};
+
 export const applicationApi = {
   preview: (request: ApplyPreviewRequest): Promise<ApplicationPreview> =>
     fetch(`${PORTAL_API_BASE}/api/applications/preview`, {

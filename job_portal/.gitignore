@@ -1,0 +1,17 @@
+# Secrets. The template is .env.example, which is committed.
+.env
+backend/JobPortal.Api/.env
+frontend/.env.local
+
+# .NET
+bin/
+obj/
+*.user
+
+# Node
+node_modules/
+dist/
+
+# Candidate resumes uploaded through the portal. Real people's contact details;
+# they must never reach the repository.
+backend/JobPortal.Api/storage/

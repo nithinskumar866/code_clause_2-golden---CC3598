@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.database import init_db
 from app.core.exceptions import register_exception_handlers
-from app.api.v1.routers import health, resume, job, analysis, dashboard, notes, workflow, analytics, export, chat, embeddings, documents
+from app.api.v1.routers import health, resume, job, analysis, dashboard, notes, workflow, analytics, export, chat, embeddings, documents, prompt_lab, company_chat
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,6 +54,11 @@ app.include_router(analytics.router, prefix=f"{settings.API_V1_STR}/analytics", 
 app.include_router(chat.router, prefix=f"{settings.API_V1_STR}/chat", tags=["Recruiter Chat"])
 app.include_router(embeddings.router, prefix=f"{settings.API_V1_STR}/embeddings", tags=["Embedding Store"])
 app.include_router(documents.router, prefix=f"{settings.API_V1_STR}/documents", tags=["Document Management"])
+# Prompt Lab — measure a system prompt against a fixed case set. A test harness, not a
+# runtime agent: it never joins the hiring workflow.
+app.include_router(prompt_lab.router, prefix=f"{settings.API_V1_STR}/prompt-lab", tags=["Prompt Lab"])
+# Company knowledge base (Qdrant). Opt-in module: nothing else in the app calls it.
+app.include_router(company_chat.router, prefix=f"{settings.API_V1_STR}/company-chat", tags=["Company Intelligence"])
 # Notes routes span /analysis/{id}/notes and /notes/{id}, so mount at the API root.
 app.include_router(notes.router, prefix=settings.API_V1_STR, tags=["Notes"])
 # Workflow status routes live under /analysis/{id}/status, so mount at the API root.

@@ -81,3 +81,58 @@ class RecruiterNote(Base):
 
     # Relationship back to the owning analysis
     analysis = relationship("Analysis", back_populates="notes")
+
+
+class PromptSuite(Base):
+    """
+    A saved prompt plus the cases it is graded on — the regression unit of the Prompt Lab.
+
+    The cases live beside the prompt because they only mean anything together: a case
+    asserts what THIS prompt promised (1-2 lines, link only when relevant), and a suite
+    detached from its prompt grades nothing.
+    """
+
+    __tablename__ = "prompt_suites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(Text, nullable=False, default="")
+    prompt = Column(Text, nullable=False)
+    # JSON array of cases. Free-form by design: a case's expectations grow as the prompt
+    # grows new clauses, and a migration per clause would make that unaffordable.
+    cases = Column(Text, nullable=False, default="[]")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    runs = relationship("PromptRun", back_populates="suite", cascade="all, delete-orphan")
+
+
+class PromptRun(Base):
+    """
+    One graded execution of one prompt variant over a suite.
+
+    `prompt_hash` and `model` are stored with the score because a pass rate without them
+    is not a result: the same suite scores differently against a different model, and a
+    regression history that cannot tell a prompt edit from a model swap is noise.
+    """
+
+    __tablename__ = "prompt_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    suite_id = Column(
+        Integer, ForeignKey("prompt_suites.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    label = Column(String, nullable=False, default="A")
+    prompt_hash = Column(String, nullable=False, index=True)
+    model = Column(String, nullable=False, default="")
+    total_cases = Column(Integer, nullable=False, default=0)
+    clean_cases = Column(Integer, nullable=False, default=0)
+    passed = Column(Integer, nullable=False, default=0)
+    failed = Column(Integer, nullable=False, default=0)
+    score = Column(Float, nullable=True)
+    # Full per-case, per-rule detail as JSON, so a past run can be reopened rather than
+    # merely remembered as a number.
+    results = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    suite = relationship("PromptSuite", back_populates="runs")

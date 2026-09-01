@@ -13,6 +13,7 @@ import { Analysis } from './pages/Analysis/Analysis';
 import { Chat } from './pages/Chat/Chat';
 import { Ranking } from './pages/Ranking/Ranking';
 import { ModelLab } from './pages/ModelLab/ModelLab';
+import { PromptLab } from './pages/PromptLab/PromptLab';
 import { Documents } from './pages/Documents/Documents';
 import { History } from './pages/History/History';
 import { CandidateProfile } from './pages/CandidateProfile/CandidateProfile';
@@ -28,6 +29,7 @@ import { Applicants } from './portal/Applicants';
 // selected record, so it is not URL-restorable and is omitted here).
 const VIEW_PAGES: PageId[] = [
   'dashboard', 'resume', 'job', 'documents', 'analysis', 'chat', 'ranking', 'history', 'analytics',
+  'promptlab',
   'jobboard', 'postjob', 'applicants', 'status',
 ];
 
@@ -107,6 +109,8 @@ const App: FC = () => {
         return <Documents />;
       case 'modellab':
         return <ModelLab />;
+      case 'promptlab':
+        return <PromptLab />;
       case 'jobboard':
         return <JobBoard />;
       case 'postjob':

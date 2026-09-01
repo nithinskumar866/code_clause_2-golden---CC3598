@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.5" />
+    <!--
+      Microsoft.AspNetCore.SignalR.Common is deliberately NOT referenced.
+
+      Microsoft.NET.Sdk.Web already supplies every SignalR server type through the
+      ASP.NET Core shared framework, and pinning the package separately overrode
+      one assembly of that framework with a version built for a different one. A
+      10.x Common on a net9.0 app disagrees with the framework's own
+      JsonHubProtocol about IInvocationBinder, so parsing the FIRST hub message
+      threw MissingMethodException — the connection handshook, then died on send:
+
+        Method not found: 'System.String
+        Microsoft.AspNetCore.SignalR.IInvocationBinder.GetTarget(ReadOnlySpan`1<Byte>)'
+
+      which reached the browser only as "Connection closed with an error".
+      SignalR assemblies must come from the shared framework, never be pinned.
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.0" />
+    <!--
+      The RAG mode's storage. Postgres holds the chunk text and ingestion state;
+      Qdrant holds the vectors. Both are additive — the existing scoring modes
+      keep running entirely on SQLite, and nothing outside Services/Rag touches
+      either of these.
+    -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.2" />
+    <PackageReference Include="Qdrant.Client" Version="1.12.0" />
+    <PackageReference Include="PdfPig" Version="0.1.15" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+  </ItemGroup>
+
+  <!-- CI Guard: Fail build if Microsoft.AspNetCore.SignalR.Common is referenced -->
+  <!-- This check is implemented in CI pipeline (e.g., GitHub Actions) rather than MSBuild -->
+  <!-- to avoid MSBuild parsing issues. The CI step should grep the csproj for the forbidden package. -->
+
+  <!-- CI Guard: Verify launchSettings.json applicationUrl matches frontend VITE_API_BASE -->
+  <Target Name="CheckPortConsistency" BeforeTargets="Build">
+    <PropertyGroup>
+      <LaunchSettingsFile>Properties\launchSettings.json</LaunchSettingsFile>
+      <FrontendEnvFile>..\..\frontend\.env</FrontendEnvFile>
+    </PropertyGroup>
+    <Error
+      Condition="!Exists('$(LaunchSettingsFile)')"
+      Text="launchSettings.json not found at $(LaunchSettingsFile)" />
+    <Error
+      Condition="!Exists('$(FrontendEnvFile)')"
+      Text="Frontend .env not found at $(FrontendEnvFile)" />
+    <!-- Extract HTTP port from launchSettings.json (http profile) -->
+    <PropertyGroup>
+      <LaunchSettingsContent>$([System.IO.File]::ReadAllText('$(LaunchSettingsFile)'))</LaunchSettingsContent>
+      <FrontendEnvContent>$([System.IO.File]::ReadAllText('$(FrontendEnvFile)'))</FrontendEnvContent>
+    </PropertyGroup>
+    <!-- This is a basic check - in practice you'd want more robust JSON parsing -->
+    <Warning
+      Condition="!$(LaunchSettingsContent.Contains('5290')) Or !$(FrontendEnvContent.Contains('5290'))"
+      Text="Port mismatch detected: launchSettings.json HTTP port should match VITE_API_BASE in frontend/.env (expected 5290). Current launchSettings: $(LaunchSettingsContent), Frontend .env: $(FrontendEnvContent)" />
+  </Target>
+</Project>
+
+

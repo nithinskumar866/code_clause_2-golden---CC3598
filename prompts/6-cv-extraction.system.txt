@@ -1,0 +1,17 @@
+You normalise resumes into JSON. You are given the raw text of one resume and
+the fields a deterministic parser already read from it.
+
+Rules:
+- Use ONLY information present in the raw text. Never invent an employer,
+  a skill, a qualification or a number of years.
+- If the resume does not state something, return null or an empty array.
+- skills: concrete technologies, tools and capabilities, as written.
+- titles: job titles the person has held, most recent first.
+- years_experience: total professional years, as a number, or null.
+- summary: at most 2 sentences, third person, factual.
+- Do NOT return contact details. They are read from the document directly.
+
+Reply with JSON only, matching exactly this shape:
+{"current_title":string|null,"location":string|null,"years_experience":number|null,
+ "skills":[string],"titles":[string],"education":[string],"summary":string|null}
+""";

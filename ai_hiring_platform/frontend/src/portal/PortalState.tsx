@@ -99,8 +99,10 @@ export function PortalStateProvider({ children, onShowBoard, navigator }: Provid
     }
   }, []);
 
-  const { state: connection, turns, busy, send: hubSend, analyzeResume, appendLocal, clearTurns } =
-    useChatHub(sessionId, chatEverOpened, applyAction);
+  const {
+    state: connection, turns, busy, send: hubSend, analyzeResume, appendLocal, clearTurns,
+    scoringMode, setScoringMode,
+  } = useChatHub(sessionId, chatEverOpened, applyAction);
 
   /**
    * Starts a fresh conversation.
@@ -118,6 +120,10 @@ export function PortalStateProvider({ children, onShowBoard, navigator }: Provid
     setSpotlight(null);
     setLastCommand(null);
     setChatError(null);
+    // The CV goes too. Leaving it meant a "new" chat still answered as the last
+    // person, and the uploader offered only Replace on a document the candidate
+    // believed they had already cleared.
+    setResume(null);
     try {
       await resetConversation(sessionId);
     } catch {
@@ -275,14 +281,14 @@ export function PortalStateProvider({ children, onShowBoard, navigator }: Provid
 
   const value = useMemo<PortalState>(() => ({
     chatOpen, openChat, closeChat, unread,
-    connection, turns, busy, send, openPage,
+    connection, turns, busy, send, openPage, scoringMode, setScoringMode,
     resume, uploadResume, uploading, chatError, dismissChatError,
     filters, setFilters, spotlight, clearSpotlight, lastCommand,
     health, reachable, engage,
     newConversation, resetting,
   }), [
     chatOpen, openChat, closeChat, unread,
-    connection, turns, busy, send, openPage,
+    connection, turns, busy, send, openPage, scoringMode, setScoringMode,
     resume, uploadResume, uploading, chatError, dismissChatError,
     filters, spotlight, clearSpotlight, lastCommand,
     health, reachable, engage,

@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: job_portal/frontend/package-lock.json
+
+      - name: Restore .NET dependencies
+        run: dotnet restore job_portal/JobPortal.sln
+
+      - name: Build .NET
+        run: dotnet build job_portal/JobPortal.sln --no-restore --configuration Release
+
+      - name: Run .NET tests
+        run: dotnet test job_portal/JobPortal.sln --no-build --configuration Release --verbosity normal
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: job_portal/frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: job_portal/frontend
+
+      - name: Run frontend tests
+        run: npm test
+        working-directory: job_portal/frontend
+
+  signalr-package-guard:
+    name: SignalR Package Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for forbidden SignalR package reference
+        run: |
+          if grep -r "Microsoft.AspNetCore.SignalR.Common" job_portal/backend/JobPortal.Api/JobPortal.Api.csproj; then
+            echo "ERROR: Forbidden package reference detected: Microsoft.AspNetCore.SignalR.Common"
+            echo "This package must not be referenced directly - SignalR types come from the ASP.NET Core shared framework (Microsoft.NET.Sdk.Web)."
+            exit 1
+          fi
+        shell: bash
+
+      - name: Verify port consistency
+        run: |
+          # Extract HTTP port from launchSettings.json
+          LAUNCH_PORT=$(grep -o '"applicationUrl": "http://localhost:[0-9]*"' job_portal/backend/JobPortal.Api/Properties/launchSettings.json | head -1 | grep -o '[0-9]*$')
+          # Extract port from frontend .env
+          FRONTEND_PORT=$(grep -o 'VITE_API_BASE=http://localhost:[0-9]*' job_portal/frontend/.env | grep -o '[0-9]*$')
+          
+          if [ "$LAUNCH_PORT" != "$FRONTEND_PORT" ]; then
+            echo "ERROR: Port mismatch - launchSettings.json has $LAUNCH_PORT but frontend/.env has $FRONTEND_PORT"
+            exit 1
+          fi
+          
+          echo "Port consistency check passed: $LAUNCH_PORT"
+        shell: bash

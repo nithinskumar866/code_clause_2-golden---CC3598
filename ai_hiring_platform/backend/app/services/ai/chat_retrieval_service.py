@@ -46,6 +46,7 @@ import numpy as np
 
 from app.core.config import settings
 from app.core.logging import logger
+from app.services.ai import chat_llm_retrieval as assist
 from app.services.ai import text_matching as tm
 from app.services.ai.chat_query_understanding import QueryIntent, QueryKind
 from app.services.ai.embedding_store import ModelIndex as Corpus
@@ -346,6 +347,118 @@ def _confirms(chunk: str, skill: str) -> bool:
         return True
 
     return False
+
+
+def _admits(evidence: Dict[str, Any]) -> bool:
+    """
+    Whether one retrieved passage counts as evidence — the model's verdict when there
+    is one, the lexical rule when there is not.
+
+    The two disagree in both directions, and that is the point of asking:
+
+      lexical no  / model "yes"   "Led the sprint ceremonies and unblocked the team"
+                                  evidences Communication without containing the word.
+                                  Recall the lexical gate could never have.
+      lexical yes / model "no"    the skill appears, but describing someone ELSE's
+                                  stack, or a tool the person listed and never used.
+                                  Precision the lexical gate could never have.
+
+    "weak" is admitted but demoted rather than dropped: a skill named in a list IS a
+    claim, just not proof, which is exactly what `literal=False` already means to
+    `_skill_depth` (it applies the 0.7 semantic-only multiplier). Reusing that keeps
+    one definition of evidence strength instead of adding a second.
+
+    A missing verdict means the model was not asked, was unreachable, or ran out of
+    time — never that it said no. Those fall back to the lexical rule, so the
+    deterministic behaviour is preserved exactly.
+    """
+    verdict = evidence.get("llm_verdict")
+    if verdict == "yes":
+        return True
+    if verdict == "no":
+        return False
+    if verdict == "weak":
+        evidence["literal"] = False
+        return True
+    return _confirms(evidence.get("text") or "", evidence["skill"])
+
+
+def _verify_evidence(evidence_by_resume: Dict[int, List[Dict[str, Any]]]) -> int:
+    """
+    Ask the model to judge every retrieved passage, annotating them in place.
+
+    Returns how many verdicts came back, for the diagnostics the recruiter-facing
+    funnel already reports. Only passages the deterministic search returned are ever
+    shown, so this can reweigh evidence but never introduce any.
+    """
+    if not assist.verify_enabled():
+        return 0
+
+    pairs: List[Tuple[str, str, str]] = []
+    index: Dict[str, Dict[str, Any]] = {}
+    for rid, chunks in evidence_by_resume.items():
+        for position, chunk in enumerate(chunks):
+            item_id = f"{rid}:{position}"
+            index[item_id] = chunk
+            pairs.append((item_id, chunk["skill"], chunk.get("text") or ""))
+
+    verdicts = assist.verify_evidence(pairs)
+    for item_id, verdict in verdicts.items():
+        chunk = index.get(item_id)
+        if chunk is not None:
+            chunk["llm_verdict"] = verdict
+    return len(verdicts)
+
+
+def _apply_relevance(candidate: Dict[str, Any], relevance: float) -> None:
+    """
+    Fold the model's relevance judgement into the score as one more weighted
+    parameter, in place.
+
+    It deliberately does NOT multiply or override the deterministic score. It enters
+    `match_parameters` beside Skill, Technology, Location and Experience and is
+    renormalised with them, which means three things the recruiter needs:
+
+      * the number stays decomposable — "AI Relevance 72 × 0.18" is visible in the
+        breakdown, so nobody has to wonder why a candidate moved;
+      * the deterministic parameters keep their relative proportions to each other;
+      * switching the stage off restores the previous number exactly, because the
+        component simply is not appended.
+    """
+    parameters = candidate.get("match_parameters") or []
+    if not parameters:
+        # Nothing was asked for — an overview question. There is no requirement to be
+        # relevant TO, so a relevance percentage would be inventing a judgement.
+        return
+
+    # Undo the earlier renormalisation to recover each parameter's raw weight, append
+    # the new one, then renormalise the whole set together.
+    raw: List[Tuple[Dict[str, Any], float]] = []
+    for component in parameters:
+        raw.append((component, float(component.get("weight", 0.0))))
+    scale = sum(w for _, w in raw) or 1.0
+
+    rebuilt: List[Dict[str, Any]] = []
+    for component, weight in raw:
+        rebuilt.append({**component, "weight": weight / scale})
+    rebuilt.append({
+        "key": "llm_relevance",
+        "label": "AI Relevance",
+        "weight": settings.MATCH_WEIGHT_LLM_RELEVANCE,
+        "score": round(max(0.0, min(100.0, relevance)), 1),
+        "basis": "how well the retrieved evidence answers the question, judged by the model",
+    })
+
+    total = sum(c["weight"] for c in rebuilt) or 1.0
+    for component in rebuilt:
+        component["weight"] = round(component["weight"] / total, 4)
+        component["contribution"] = round(component["score"] * component["weight"], 1)
+
+    candidate["match_parameters"] = rebuilt
+    candidate["match_percentage"] = int(round(
+        max(0.0, min(100.0, sum(c["contribution"] for c in rebuilt)))
+    ))
+    candidate["llm_relevance"] = int(round(relevance))
 
 
 def _is_role_term(text: str) -> bool:
@@ -671,7 +784,7 @@ def _score_candidate(
     requested = intent.skills or []
     by_skill: Dict[str, List[Dict[str, Any]]] = {}
     for e in evidence:
-        if not _confirms(e.get("text") or "", e["skill"]):
+        if not _admits(e):
             continue
         by_skill.setdefault(e["skill"], []).append(e)
 
@@ -1043,6 +1156,12 @@ def search_candidates(
             set.intersection(*found_per_skill.values()) if found_per_skill else set()
         )
 
+        # STAGE 3a — the model judges the passages the search returned, before any of
+        # them are counted as coverage. It runs here rather than after scoring because
+        # a verdict changes what "matched" MEANS, and the whole decomposition is
+        # computed from that.
+        stats["llm_verdicts"] = _verify_evidence(evidence_by_resume)
+
     # "Who is the most experienced?" asks the pool to be ORDERED by a field we already
     # hold, not searched for evidence of a skill. Falling through to the skill path
     # returned nothing at all — and the assistant's own suggestion chip offered exactly
@@ -1095,6 +1214,34 @@ def search_candidates(
                        c["breakdown"]["evidence_strength"]),
         reverse=True,
     )
+
+    # STAGE 3b — re-rank the head of the deterministic ordering.
+    #
+    # It runs AFTER the sort, not instead of it: the deterministic order decides which
+    # candidates are worth a judgement at all, so recall stays the retriever's job and
+    # only precision is bought from the model. A candidate the funnel excluded cannot
+    # be resurrected here, which is what keeps the result explainable.
+    if assist.rerank_enabled() and candidates:
+        request = " ".join(filter(None, [
+            " ".join(intent.skills or []),
+            " ".join(intent.place_labels or []),
+            experience_bar_label(intent) if (intent.min_years is not None
+                                             or intent.max_years is not None) else "",
+        ])).strip()
+        relevance = assist.rerank(request, candidates)
+        if relevance:
+            for candidate in candidates:
+                score = relevance.get(candidate["resume_id"])
+                # Absent means "not judged" — in flight when the deadline hit, or
+                # outside the re-rank window. Its deterministic score stands.
+                if score is not None:
+                    _apply_relevance(candidate, score)
+            candidates.sort(
+                key=lambda c: (c["match_percentage"], c.get("llm_relevance", -1),
+                               c["breakdown"]["skill_coverage"]),
+                reverse=True,
+            )
+            stats["llm_reranked"] = len(relevance)
 
     stats.update(facets.counts(intent))
     stats["candidates_scored"] = len(candidates)

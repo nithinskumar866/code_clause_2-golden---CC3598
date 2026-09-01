@@ -2,20 +2,52 @@ import { useCallback, useEffect, useRef, useState, type FC, type FormEvent } fro
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  ArrowRight, Bot, ChevronDown, FileText, GripVertical, Mic, MicOff,
-  RefreshCw, Send, Sparkles, Volume2, VolumeX, X,
+  ArrowRight, Bot, Brain, ChevronDown, Database, FileText, GripVertical, Loader2, Mic, MicOff,
+  RefreshCw, Send, Sigma, Sparkles, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { usePortalState } from './portal-context';
 import { FileDrop } from './FileDrop';
 import { MatchCard } from './MatchCard';
 import { ApplyReview } from './ApplyReview';
+import { ScreeningDialog } from './ScreeningDialog';
 import { SuggestionCard } from './SuggestionCard';
 import { Working, SkeletonRows } from './Working';
 import { suggestJobs } from './api';
 import { usePanelSize } from './usePanelSize';
 import { useVoice } from './useVoice';
-import type { JobSuggestionResult } from './types';
+import type { JobSuggestionResult, ScoringMode } from './types';
 import type { ConnectionState } from './useChatHub';
+
+/**
+ * The two scorers, as the candidate meets them.
+ *
+ * Both stay available on purpose. The computed one is instant and gives the same
+ * answer every time; the reasoned one reads each posting properly and can see
+ * that experience with one framework is evidence for a requirement written in
+ * different words — at ten to twenty seconds a role. Which is better depends on
+ * the question, so the choice is the candidate's rather than a default nobody
+ * can see.
+ */
+const MODES: { id: ScoringMode; label: string; hint: string; Icon: typeof Sigma }[] = [
+  {
+    id: 'computed',
+    label: 'Fast score',
+    hint: 'Instant and repeatable. Similarity, skill overlap, title and experience, weighted.',
+    Icon: Sigma,
+  },
+  {
+    id: 'reasoned',
+    label: 'AI evaluation',
+    hint: 'Reads each posting requirement by requirement and judges the evidence behind every one. Slower — the closest three arrive first.',
+    Icon: Brain,
+  },
+  {
+    id: 'rag',
+    label: 'RAG',
+    hint: 'Retrieves the passages of your CV that bear on each requirement, then judges only those. Nothing is truncated, and every verdict cites the passage it came from.',
+    Icon: Database,
+  },
+];
 
 const DOT: Record<ConnectionState, { className: string; label: string }> = {
   idle: { className: 'bg-gray-500', label: 'Not connected yet' },
@@ -61,6 +93,7 @@ export const ChatWidget: FC = () => {
     connection, turns, busy, send, openPage,
     resume, uploadResume, uploading, chatError, dismissChatError,
     health, reachable, newConversation, resetting,
+    scoringMode, setScoringMode,
   } = usePortalState();
 
   const { size, startResize, resizing } = usePanelSize();
@@ -70,6 +103,20 @@ export const ChatWidget: FC = () => {
   // Which postings an apply-review is open for. Null means no review is open;
   // nothing can be sent while it is null, which is the whole safety property.
   const [reviewing, setReviewing] = useState<number[] | null>(null);
+
+  /**
+   * The posting whose screening questions are open, if any.
+   *
+   * A separate state from `reviewing` on purpose: the gate has to CLOSE before the
+   * review opens, and one variable holding both would make "questions answered" and
+   * "ready to send" the same fact. They are not — the whole point is that the first
+   * has to happen before the second.
+   *
+   * Single-job only. Four questions per role across a five-role bulk apply is twenty
+   * questions, which nobody finishes, so "apply to all" keeps going straight to the
+   * review it always did.
+   */
+  const [screening, setScreening] = useState<number | null>(null);
   // Roles fetched to open with. null = still loading, so the panel can show a
   // skeleton of the right shape rather than jumping when they land.
   const [opening, setOpening] = useState<JobSuggestionResult | null>(null);
@@ -277,6 +324,45 @@ export const ChatWidget: FC = () => {
             </button>
           </header>
 
+          {/* -- how roles get scored --
+              Outside the transcript so it is visible while reading any answer,
+              and immediately above it so the connection between the setting and
+              the cards below is not something anyone has to be told. Switching
+              does not re-score what is already on screen: those answers keep the
+              mode they were produced under, and each card says which. */}
+          <div
+            role="radiogroup"
+            aria-label="How roles are scored"
+            className="flex shrink-0 items-center gap-1 border-b border-border bg-black/20 px-3 py-2"
+          >
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600">
+              Scoring
+            </span>
+            {MODES.map(({ id, label, hint, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={scoringMode === id}
+                disabled={busy}
+                title={hint}
+                onClick={() => setScoringMode(id)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  scoringMode === id
+                    ? id === 'reasoned'
+                      ? 'bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/30'
+                      : id === 'rag'
+                        ? 'bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30'
+                        : 'bg-white/10 text-white ring-1 ring-white/15'
+                    : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
           {/* -- transcript -- */}
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {reachable === false && (
@@ -396,6 +482,30 @@ export const ChatWidget: FC = () => {
                       </div>
                     )}
 
+                    {/* Questions worth asking next. They do double duty: nobody
+                        guesses unprompted that "what should I learn across all
+                        these roles" is answerable, and when a reference could not
+                        be pinned to a posting these become the ask-back — tapping
+                        a real role beats re-typing the name that just failed to
+                        resolve. Every chip is built server-side from the shortlist
+                        that exists, so none can offer an answer we cannot give. */}
+                    {!turn.streaming && turn.followUps.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {turn.followUps.map(followUp => (
+                          <button
+                            key={followUp.message}
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void send(followUp.message)}
+                            title={followUp.message}
+                            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs font-medium text-gray-300 transition hover:border-indigo-500/40 hover:bg-indigo-500/10 hover:text-indigo-200 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                          >
+                            {followUp.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Roles found without a CV: no score, because there is
                         nobody to score yet. */}
                     {turn.suggestions && turn.suggestions.jobs.length > 0 && (
@@ -423,9 +533,26 @@ export const ChatWidget: FC = () => {
                             key={match.job.id}
                             match={match}
                             compact
-                            onApply={resume ? (jobId) => setReviewing([jobId]) : undefined}
+                            // Applying to ONE role goes through the screening
+                            // questions first; the review opens only once they pass.
+                            onApply={resume ? (jobId) => setScreening(jobId) : undefined}
                           />
                         ))}
+
+                        {/* Still judging.
+                            Shown under the cards that HAVE landed rather than in
+                            place of them: the whole reason the shortlist arrives
+                            in pieces is so there is something to read while the
+                            rest is worked out, and a spinner covering the answer
+                            would undo that. */}
+                        {!turn.matches.complete && turn.matches.pending > 0 && (
+                          <p className="flex items-center gap-2 rounded-lg border border-violet-500/15 bg-violet-500/[0.07] px-2.5 py-2 text-[11px] text-violet-200/80">
+                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-violet-400" />
+                            Reading {turn.matches.pending} more{' '}
+                            {turn.matches.pending === 1 ? 'role' : 'roles'} against your CV. They
+                            appear here as each one is judged — keep asking in the meantime.
+                          </p>
+                        )}
 
                         {resume && turn.matches.matches.length > 1 && (
                           <button
@@ -556,6 +683,20 @@ export const ChatWidget: FC = () => {
 
       {/* Rendered outside the panel so it is never clipped by the popup, and so
           closing the chat cannot leave a half-confirmed submission behind. */}
+
+      {/* The gate. Closes itself and hands the job on only when the server says the
+          answers pass — declining leaves the review unopened, which is the point. */}
+      {screening !== null && resume && (
+        <ScreeningDialog
+          jobId={screening}
+          onPassed={() => {
+            setReviewing([screening]);
+            setScreening(null);
+          }}
+          onClose={() => setScreening(null)}
+        />
+      )}
+
       {reviewing && resume && (
         <ApplyReview
           resumeId={resume.id}

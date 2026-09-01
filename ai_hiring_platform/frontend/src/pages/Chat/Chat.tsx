@@ -6,6 +6,11 @@ import {
 import type { ChatSuggestion, ChatTurn, CorpusStatus } from '../../types';
 import { askChatStreaming, getCorpusStatus, resetChat, syncCorpus } from '../../api/chat';
 import { CandidateCard } from '../../components/chat/CandidateCard';
+import { ChatModeToggle, type ChatMode } from '../../components/chat/ChatModeToggle';
+import { CompanyChat } from './CompanyChat';
+import { WebChat } from './WebChat';
+import { getCompanyStatus } from '../../api/companyChat';
+import { getWebHealth } from '../../api/webChat';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -63,6 +68,23 @@ export const Chat: FC<ChatProps> = ({ onEvaluateCandidate }) => {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<CorpusStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // Which knowledge base answers. A hard switch: the company and web modes are separate
+  // corpora with their own conversations, so nothing below this line runs while either
+  // is selected.
+  const [mode, setMode] = useState<ChatMode>('candidates');
+  // Offered only when the company store is actually configured, reachable and loaded —
+  // a toggle that leads to an assistant with nothing to say is worse than no toggle.
+  const [companiesReady, setCompaniesReady] = useState<{ ok: boolean; reason: string }>({
+    ok: false,
+    reason: 'Checking the company database…',
+  });
+  // Web mode is served by the standalone `company_intel` crawler, a different process
+  // on a different port. Probed the same way and for the same reason as the company
+  // store: a toggle that leads to an assistant with nothing to say is worse than none.
+  const [webReady, setWebReady] = useState<{ ok: boolean; reason: string }>({
+    ok: false,
+    reason: 'Checking the company crawler…',
+  });
   const sessionId = useRef<string>(`hr-${newId()}`);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +96,49 @@ export const Chat: FC<ChatProps> = ({ onEvaluateCandidate }) => {
   }, [engine]);
 
   useEffect(loadStatus, [loadStatus]);
+
+  // Probed once. A crawler that is not running is a normal state — every other mode
+  // works exactly as before without it — so a failure here only disables the toggle.
+  useEffect(() => {
+    getWebHealth()
+      .then((h) =>
+        setWebReady({
+          ok: h.qdrant.reachable && h.companies > 0,
+          reason: !h.qdrant.reachable
+            ? h.qdrant.detail || 'The crawler cannot reach its vector store.'
+            : h.companies === 0
+              ? 'No company websites crawled yet.'
+              : '',
+        }),
+      )
+      .catch(() =>
+        setWebReady({
+          ok: false,
+          reason: 'The company crawler is not running (start company_intel).',
+        }),
+      );
+  }, []);
+
+  // Probed once. A missing or empty company store is a normal state — the platform
+  // works exactly as before without it — so a failure here only disables the toggle.
+  useEffect(() => {
+    getCompanyStatus()
+      .then((s) =>
+        setCompaniesReady({
+          ok: s.configured && s.reachable && s.companies > 0,
+          reason: !s.configured
+            ? 'The company database is not configured (QDRANT_URL / QDRANT_API_KEY).'
+            : !s.reachable
+              ? s.detail || 'The company database is unreachable.'
+              : s.companies === 0
+                ? 'No companies loaded yet — run scripts/load_companies.py.'
+                : `Search ${s.companies} companies`,
+        }),
+      )
+      .catch(() =>
+        setCompaniesReady({ ok: false, reason: 'The company database is unavailable.' }),
+      );
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -164,6 +229,16 @@ export const Chat: FC<ChatProps> = ({ onEvaluateCandidate }) => {
     }
   };
 
+  // Each non-candidate mode is a whole separate screen against a separate corpus.
+  // Returning early is what guarantees the candidate pipeline below is not merely
+  // unused but unreached.
+  if (mode === 'companies') {
+    return <CompanyChat onModeChange={setMode} />;
+  }
+  if (mode === 'web') {
+    return <WebChat onModeChange={setMode} />;
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -197,6 +272,15 @@ export const Chat: FC<ChatProps> = ({ onEvaluateCandidate }) => {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <ChatModeToggle
+            mode="candidates"
+            onChange={setMode}
+            companiesDisabled={!companiesReady.ok}
+            companiesTitle={companiesReady.reason}
+            webDisabled={!webReady.ok}
+            webTitle={webReady.reason}
+          />
+
           {/* Choose the search model per question. Both run on your own
               infrastructure — the local one in this process, the GPU one on your
               endpoint. If the GPU is unreachable the answer falls back to local and

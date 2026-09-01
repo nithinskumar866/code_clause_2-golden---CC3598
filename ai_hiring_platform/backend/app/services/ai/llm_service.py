@@ -125,14 +125,64 @@ class OpenAICompatibleLLM:
             return False
 
 
+def _named_runtime() -> Optional[OpenAICompatibleLLM]:
+    """
+    The Ollama / RunPod endpoint selected by `LLM_RUNTIME`, if one is configured.
+
+    Both are configured at the same time and chosen by name, because the GPU box and
+    the local daemon serve the same OpenAI-compatible API and the only real question
+    is which one to point at today. `auto` prefers RunPod (the faster box) and falls
+    back to Ollama; an EXPLICIT choice never falls through to the other, since a
+    benchmark that quietly ran on the wrong runtime is worse than one that fails.
+    """
+    runtime = (settings.LLM_RUNTIME or "auto").strip().lower()
+    if runtime == "api":
+        return None
+
+    def runpod() -> Optional[OpenAICompatibleLLM]:
+        if not (settings.RUNPOD_BASE_URL and settings.RUNPOD_MODEL):
+            return None
+        return OpenAICompatibleLLM(
+            base_url=settings.RUNPOD_BASE_URL, model=settings.RUNPOD_MODEL,
+            api_key=settings.RUNPOD_API_KEY, timeout=settings.LLM_TIMEOUT_SECONDS,
+        )
+
+    def ollama() -> Optional[OpenAICompatibleLLM]:
+        if not (settings.OLLAMA_BASE_URL and settings.OLLAMA_MODEL):
+            return None
+        return OpenAICompatibleLLM(
+            base_url=settings.OLLAMA_BASE_URL, model=settings.OLLAMA_MODEL,
+            api_key="", timeout=settings.LLM_TIMEOUT_SECONDS,
+        )
+
+    if runtime == "runpod":
+        llm = runpod()
+        if llm is None:
+            logger.warning("LLM_RUNTIME=runpod but RUNPOD_BASE_URL/RUNPOD_MODEL are unset.")
+        return llm
+    if runtime == "ollama":
+        llm = ollama()
+        if llm is None:
+            logger.warning("LLM_RUNTIME=ollama but OLLAMA_MODEL is unset.")
+        return llm
+
+    return runpod() or ollama()
+
+
 def get_llm() -> Optional[object]:
     """
     Build the configured LLM, or return None to signal the deterministic fallback.
 
-    A configured `LLM_BASE_URL` wins over the hosted providers: it means the operator
-    pointed the platform at their own OpenAI-compatible endpoint, and self-hosted
-    endpoints commonly need no API key.
+    Resolution order: a named runtime (`LLM_RUNTIME` -> Ollama/RunPod), then an
+    explicit `LLM_BASE_URL`, then a hosted provider. Self-hosted endpoints commonly
+    need no API key, which is why they are selected on URL+model rather than on a key.
     """
+    named = _named_runtime()
+    if named is not None:
+        logger.info(f"LLM ready: runtime='{settings.LLM_RUNTIME}', "
+                    f"endpoint='{named.base_url}', model='{named.model}'.")
+        return named
+
     if settings.LLM_BASE_URL:
         model = (settings.LLM_MODEL or "").strip()
         if not model:

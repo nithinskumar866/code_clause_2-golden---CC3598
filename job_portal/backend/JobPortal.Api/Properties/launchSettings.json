@@ -1,0 +1,24 @@
+﻿{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "_comment": "0.0.0.0, not localhost. The browser resolves VITE_PORTAL_API_BASE, which frontend/.env.local sets to this machine's LAN address so the app can be opened from another device. Bound to localhost, Kestrel answers 127.0.0.1 and ::1 only, so every call to that LAN address is refused and the portal reports itself unreachable while appearing to run perfectly in the terminal. Revert to http://localhost:5290 to stop serving beyond this machine.",
+      "applicationUrl": "http://0.0.0.0:5290",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "https": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:7088;http://localhost:5276",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
