@@ -495,3 +495,94 @@ class TestDuplicateShells:
         report = pipeline.crawl_company("acme-com")
         assert report.pages_duplicate == 0
         assert report.pages_indexed == 3
+
+
+class TestAnswerFocus:
+    """
+    An answer must be an answer, not a survey of the evidence.
+
+    Observed live on "what is gorecruitai": eight passages went to the model, including
+    the privacy policy, a registration form and a duplicate of the homepage, and it
+    replied with 200+ words narrating each one — "SOURCE 5 is a registration page, but
+    it does not provide a clear description", "SOURCE 6 is a repeat of SOURCE 1".
+    """
+
+    @pytest.fixture
+    def noisy(self, store, embedder, no_robots, site_factory):
+        registry.register(name="Acme", domain="acme.com", seed_urls=["https://acme.com"])
+        pitch = "Acme builds AI recruitment software for hiring teams. " * 14
+        site_factory({
+            "https://acme.com": (
+                "<html><head><title>Acme</title></head><body><main><h1>Acme</h1>"
+                f"<p>{pitch}</p>"
+                "<a href='/privacy'>Privacy</a><a href='/register'>Register</a>"
+                "<a href='/contact'>Contact</a></main></body></html>"
+            ),
+            # Boilerplate that names the company constantly, so it scores respectably
+            # against "what is Acme" and crowds out the real answer.
+            "https://acme.com/privacy": page_html(
+                "Privacy Policy",
+                [("Privacy", "At Acme, safeguarding your privacy is our priority. Acme collects data. " * 12)],
+            ),
+            "https://acme.com/register": page_html(
+                "Register", [("Register", "Welcome to Acme. Please select your country. Acme free trial. " * 12)],
+            ),
+            "https://acme.com/contact": page_html(
+                "Contact", [("Contact", "Get in touch with Acme by email at hello@acme.com. " * 12)],
+            ),
+        })
+        pipeline.crawl_company("acme-com")
+
+    def test_policy_and_signup_pages_are_labelled_as_boilerplate(self, noisy, store):
+        types = {r["url"]: r["page_type"] for r in state.list_for_company("acme-com")}
+        assert types["https://acme.com/privacy"] == "policy"
+        assert types["https://acme.com/register"] == "account"
+
+    def test_boilerplate_is_kept_out_of_a_general_question(self, noisy):
+        result = retrieval.retrieve("what is Acme", limit=8)
+        used = {e.page_type for e in result.evidence}
+        assert "policy" not in used
+        assert "account" not in used
+
+    def test_but_a_contact_question_still_reaches_the_contact_page(self, noisy):
+        """The penalty is about relevance, not a blanket ban."""
+        result = retrieval.retrieve("how do I contact Acme by email", limit=8)
+        assert "contact" in {e.page_type for e in result.evidence}
+
+    def test_near_duplicate_passages_are_collapsed(self, store, embedder, no_robots, site_factory):
+        """Sources 1 and 6 of a live answer were the same homepage text."""
+        repeated = "Acme has revolutionised our recruitment process with lightning fast sourcing. " * 14
+        registry.register(name="Acme", domain="acme.com", seed_urls=["https://acme.com"])
+        site_factory({
+            "https://acme.com": (
+                "<html><head><title>Acme</title></head><body><main><h1>Acme</h1>"
+                f"<p>{repeated}</p><a href='/b'>b</a></main></body></html>"
+            ),
+            "https://acme.com/b": page_html("Acme B", [("Same", repeated)]),
+        })
+        pipeline.crawl_company("acme-com")
+        result = retrieval.retrieve("what do customers say about Acme", limit=8)
+        texts = [e.text for e in result.evidence]
+        assert len(texts) == len(set(texts))
+        assert len(result.evidence) <= 2
+
+    def test_weak_hits_are_dropped_relative_to_the_best_one(self, noisy):
+        """
+        An absolute floor cannot do this: on a well-covered company everything clears
+        it, so a privacy policy rides in beside the real answer.
+        """
+        from app.core.config import settings
+
+        result = retrieval.retrieve("what is Acme", limit=8)
+        assert result.evidence
+        best = result.evidence[0].score
+        assert all(
+            e.score >= best - settings.RETRIEVAL_RELATIVE_MARGIN - 1e-9
+            for e in result.evidence
+        )
+
+    def test_the_prompt_forbids_narrating_the_sources(self):
+        from app.chat.guardrails import SYSTEM_PROMPT
+
+        assert "NOT A REVIEW OF THE SOURCES" in SYSTEM_PROMPT
+        assert "Never write the word" in SYSTEM_PROMPT

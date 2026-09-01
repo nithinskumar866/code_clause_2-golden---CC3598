@@ -46,6 +46,14 @@ _RULES: tuple = (
         "/clients", "/customers", "/case-stud", "/success-stor", "/testimonial",
         "/partners", "/portfolio", "/our-work", "/projects",
     )),
+    ("policy", (
+        "/privacy", "/terms", "/legal", "/cookie", "/gdpr", "/disclaimer",
+        "/accessibility", "/compliance-notice", "/terms-of-use", "/tos",
+    )),
+    ("account", (
+        "/register", "/signup", "/sign-up", "/login", "/signin", "/sign-in",
+        "/account", "/my-account", "/portal/login", "/free-trial", "/get-started",
+    )),
     ("contact", ("/contact", "/support", "/help", "/get-in-touch", "/locations", "/offices")),
     ("about", ("/about", "/company", "/who-we-are", "/our-story", "/mission", "/overview")),
 )
@@ -125,7 +133,7 @@ def refresh_days(page_type: str) -> int:
         return settings.REFRESH_DAYS_NEWS
     if page_type in ("products", "services", "careers", "clients", "home"):
         return settings.REFRESH_DAYS_PRODUCTS
-    if page_type in ("about", "leadership", "contact"):
+    if page_type in ("about", "leadership", "contact", "policy", "account"):
         return settings.REFRESH_DAYS_ABOUT
     return settings.REFRESH_DAYS_DEFAULT
 
@@ -142,4 +150,7 @@ def crawl_priority(page_type: str) -> int:
     return {
         HOME: 0, "about": 1, "products": 2, "services": 2, "leadership": 3,
         "clients": 4, "careers": 5, "contact": 6, OTHER: 7, "news": 8,
+        # Crawled last, and down-weighted at retrieval: a privacy policy or a signup
+        # form is on every site and answers almost nothing about the company.
+        "policy": 9, "account": 9,
     }.get(page_type, 7)

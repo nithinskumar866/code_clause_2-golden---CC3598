@@ -124,7 +124,18 @@ class Settings(BaseSettings):
     ANSWER_MODEL: str = "llama3.1:8b"
     ANSWER_TIMEOUT_SECONDS: float = 180.0
     OPENAI_API_KEY: str = ""
-    ANSWER_MAX_CONTEXT_CHUNKS: int = 8
+    # Fewer, better passages. Eight invites the model to survey the sources instead of
+    # answering: observed live, it wrote a paragraph about each one, including "SOURCE 5
+    # is a registration page, but it does not provide a clear description".
+    ANSWER_MAX_CONTEXT_CHUNKS: int = 5
+    # Drop passages that score materially below the best hit. An absolute floor cannot
+    # do this job: on a well-covered company everything clears it, so a privacy policy
+    # at 0.676 rides in beside the real answer at 0.729.
+    RETRIEVAL_RELATIVE_MARGIN: float = 0.045
+    # Penalty for page types that exist on every website and describe none of them.
+    RETRIEVAL_BOILERPLATE_PENALTY: float = 0.06
+    # Two passages this similar are the same text; the lower-scoring one is dropped.
+    RETRIEVAL_DUPLICATE_OVERLAP: float = 0.6
 
     # --- Derived -----------------------------------------------------------
     @property

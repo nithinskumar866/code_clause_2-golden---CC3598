@@ -44,6 +44,47 @@ _INTENT_HINTS = (
 
 _BOOST = 0.03  # small on purpose: a nudge in ordering, never an override of meaning
 
+# Page types that exist on every website and describe none of them. A privacy policy
+# genuinely mentions the company name a dozen times, so it scores respectably against
+# "what is <company>" — and then fills a slot that a real answer needed.
+_BOILERPLATE_TYPES = frozenset({"policy", "account", "contact"})
+
+
+def _shingles(text: str) -> frozenset:
+    """Word 4-grams, for spotting two passages that are the same text."""
+    words = (text or "").lower().split()
+    if len(words) < 4:
+        return frozenset({" ".join(words)}) if words else frozenset()
+    return frozenset(" ".join(words[i:i + 4]) for i in range(len(words) - 3))
+
+
+def _drop_near_duplicates(items: List["Evidence"], threshold: float) -> List["Evidence"]:
+    """
+    Remove passages that repeat one already kept.
+
+    Chunk overlap and repeated page furniture mean the same testimonial block can arrive
+    two or three times from one page. Observed live: sources 1 and 6 of an eight-source
+    answer were the same homepage text, and the model duly wrote "SOURCE 6 is a repeat
+    of SOURCE 1" — burning a slot and a sentence to say nothing.
+
+    Containment rather than Jaccard, so a short passage wholly inside a longer one is
+    caught even though their sizes differ.
+    """
+    kept: List["Evidence"] = []
+    seen: List[frozenset] = []
+    for item in items:
+        shingles = _shingles(item.text)
+        if shingles:
+            overlaps = any(
+                len(shingles & previous) / max(1, min(len(shingles), len(previous))) >= threshold
+                for previous in seen
+            )
+            if overlaps:
+                continue
+            seen.append(shingles)
+        kept.append(item)
+    return kept
+
 
 @dataclass
 class Evidence:
@@ -124,8 +165,13 @@ def retrieve(
     for hit in hits:
         payload = hit["payload"]
         score = hit["score"]
-        if intent and payload.get("page_type") == intent:
+        page_type = payload.get("page_type", "")
+        if intent and page_type == intent:
             score += _BOOST
+        # ...but a question that IS about contact details should still reach the contact
+        # page, so the penalty lifts when the intent asks for that type.
+        if page_type in _BOILERPLATE_TYPES and page_type != intent:
+            score -= settings.RETRIEVAL_BOILERPLATE_PENALTY
         scored.append(
             Evidence(
                 company_id=payload.get("company_id", ""),
@@ -142,6 +188,15 @@ def retrieve(
         )
 
     scored.sort(key=lambda e: e.score, reverse=True)
+    scored = _drop_near_duplicates(scored, settings.RETRIEVAL_DUPLICATE_OVERLAP)
+
+    # Keep only what is close to the best hit. The absolute floor decides whether the
+    # corpus knows anything at all; this decides how much of it is worth reading, and it
+    # is the difference between five passages that answer the question and eight that
+    # merely mention the company.
+    if scored:
+        cutoff = scored[0].score - settings.RETRIEVAL_RELATIVE_MARGIN
+        scored = [e for e in scored if e.score >= cutoff]
 
     # The diversity cap only applies to a pool-wide question. When the caller has
     # already narrowed to one company, depth on that company IS the answer.
