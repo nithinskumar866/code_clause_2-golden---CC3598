@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FC, type FormEvent } from 'react';
-import { Globe, Database, RotateCcw, Send, ShieldAlert, Sparkles, ExternalLink } from 'lucide-react';
+import {
+  Globe, Database, RotateCcw, Send, ShieldAlert, Sparkles, ExternalLink, ChevronRight,
+} from 'lucide-react';
 import type { WebHealth, WebTurn } from '../../types';
 import { askWebStreaming, getWebHealth, WEB_BASE } from '../../api/webChat';
 import { WebCompanyCard } from '../../components/chat/WebCompanyCard';
@@ -258,7 +260,9 @@ export const WebChat: FC<WebChatProps> = ({ onModeChange }) => {
                       {turn.evidenceCount !== undefined && (
                         <>
                           <span>·</span>
-                          <span>{turn.evidenceCount} passages</span>
+                          <span>
+                            {turn.evidenceCount === 1 ? '1 source' : `${turn.evidenceCount} sources`}
+                          </span>
                         </>
                       )}
                       {turn.durationSeconds !== undefined && (
@@ -291,12 +295,30 @@ export const WebChat: FC<WebChatProps> = ({ onModeChange }) => {
                   </div>
                 )}
 
+                {/* The evidence, folded away by default.
+                    The chips above already let a reader check any claim in one click;
+                    printing every retrieved passage in full buries the answer under the
+                    material that supports it. Auditability is preserved — this is one
+                    disclosure away, and nothing is omitted from it. */}
                 {turn.companies && turn.companies.length > 0 && (
-                  <div className="space-y-2.5">
-                    {turn.companies.map((c, i) => (
-                      <WebCompanyCard key={`${turn.id}-${c.company_id}`} company={c} rank={i + 1} />
-                    ))}
-                  </div>
+                  <details className="group pl-1">
+                    <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-gray-500 transition hover:text-gray-300">
+                      <ChevronRight className="h-3 w-3 transition group-open:rotate-90" />
+                      {turn.evidenceCount === 1
+                        ? '1 source'
+                        : `${turn.evidenceCount ?? 0} sources`}
+                      <span className="text-gray-600">the answer was written from</span>
+                    </summary>
+                    <div className="mt-2.5 space-y-2.5">
+                      {turn.companies.map((c, i) => (
+                        <WebCompanyCard
+                          key={`${turn.id}-${c.company_id}`}
+                          company={c}
+                          rank={i + 1}
+                        />
+                      ))}
+                    </div>
+                  </details>
                 )}
               </div>
             ),

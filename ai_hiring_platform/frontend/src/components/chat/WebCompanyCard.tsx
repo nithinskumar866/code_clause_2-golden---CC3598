@@ -1,4 +1,4 @@
-import { type FC } from 'react';
+import { useState, type FC } from 'react';
 import { ExternalLink, Globe } from 'lucide-react';
 import type { WebCompanyResult } from '../../types';
 import { Card } from '../ui/Card';
@@ -11,6 +11,11 @@ import { Badge } from '../ui/Badge';
  * stored spreadsheet field, the reader can open the source and check it themselves.
  * Nothing on this card was written by a language model — these are the exact strings
  * retrieved from the index.
+ *
+ * Passages are clamped rather than printed whole. A single crawled block can run to
+ * 1,500 characters — one company's "Analyst Mentions" list did — and rendering that in
+ * full buries the answer it is supposed to support. The reader opens what they want to
+ * check; nothing is hidden, only folded.
  */
 interface WebCompanyCardProps {
   company: WebCompanyResult;
@@ -28,7 +33,34 @@ const PAGE_TYPE_LABEL: Record<string, string> = {
   leadership: 'leadership',
   news: 'news',
   contact: 'contact',
+  policy: 'policy',
+  account: 'sign-up',
   other: 'page',
+};
+
+/** Roughly three lines at this type size. */
+const CLAMP = 180;
+
+const Passage: FC<{ text: string }> = ({ text }) => {
+  const [open, setOpen] = useState(false);
+  const long = text.length > CLAMP;
+  // Cut on a word boundary — a clamp that slices mid-word reads as corruption.
+  const shown = !long || open ? text : `${text.slice(0, CLAMP).replace(/\s+\S*$/, '')}…`;
+
+  return (
+    <p className="mt-1 text-xs leading-relaxed text-gray-300">
+      {shown}
+      {long && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="ml-1.5 whitespace-nowrap text-[11px] font-medium text-sky-400 transition hover:text-sky-300"
+        >
+          {open ? 'less' : 'more'}
+        </button>
+      )}
+    </p>
+  );
 };
 
 export const WebCompanyCard: FC<WebCompanyCardProps> = ({ company, rank }) => (
@@ -62,7 +94,7 @@ export const WebCompanyCard: FC<WebCompanyCardProps> = ({ company, rank }) => (
             <span className="text-gray-600">·</span>
             <span className="text-gray-500">{match.score.toFixed(3)}</span>
           </div>
-          <p className="mt-1 text-xs leading-relaxed text-gray-300">{match.text}</p>
+          <Passage text={match.text} />
           <a
             href={match.page_url}
             target="_blank"

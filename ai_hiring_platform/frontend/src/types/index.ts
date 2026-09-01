@@ -1037,7 +1037,10 @@ export interface WebChatResponse {
   company: Record<string, unknown> | null;
   companies: WebCompanyResult[];
   citations: WebCitation[];
+  /** Passages the answer was WRITTEN from. `companies` and `citations` match this. */
   evidence_count: number;
+  /** Passages that cleared retrieval before the prompt budget trimmed them. */
+  retrieved_count: number;
   intent: string;
   /** false when no LLM is configured — the answer is then quoted directly from sources. */
   llm_used: boolean;

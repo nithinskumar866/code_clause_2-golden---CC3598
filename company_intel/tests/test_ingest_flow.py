@@ -586,3 +586,66 @@ class TestAnswerFocus:
 
         assert "NOT A REVIEW OF THE SOURCES" in SYSTEM_PROMPT
         assert "Never write the word" in SYSTEM_PROMPT
+
+
+class TestShownSourcesMatchTheAnswer:
+    """
+    What the reader is shown must be what the answer was written from.
+
+    Retrieval routinely returns more passages than the prompt budget allows. Displaying
+    the surplus as the reasoning behind an answer is a quiet lie in a system whose whole
+    claim is that answers are auditable — a live answer showed 8 source cards when only
+    5 had reached the model.
+    """
+
+    @pytest.fixture
+    def wide(self, store, embedder, no_robots, site_factory):
+        registry.register(name="Acme", domain="acme.com", seed_urls=["https://acme.com"])
+        body = "Acme builds AI recruitment software for enterprise hiring teams. " * 12
+        pages = {
+            "https://acme.com": (
+                "<html><head><title>Acme</title></head><body><main><h1>Acme</h1>"
+                f"<p>{body}</p>"
+                + "".join(f"<a href='/p{i}'>p{i}</a>" for i in range(9))
+                + "</main></body></html>"
+            )
+        }
+        for i in range(9):
+            pages[f"https://acme.com/p{i}"] = page_html(
+                f"Acme page {i}", [("Section", body + f" Variation {i}. " * 6)]
+            )
+        site_factory(pages)
+        pipeline.crawl_company("acme-com")
+
+    def test_citations_cards_and_count_describe_one_set(self, wide):
+        from app.core.config import settings
+
+        result = answer_service.ask("what does Acme build", limit=10, use_llm=False)
+
+        card_matches = sum(len(c["matches"]) for c in result["companies"])
+        assert len(result["citations"]) == card_matches
+        assert result["evidence_count"] == len(result["citations"])
+        assert result["evidence_count"] <= settings.ANSWER_MAX_CONTEXT_CHUNKS
+
+    def test_retrieved_count_is_reported_separately(self, wide):
+        """The wider set is still visible for diagnostics — it just isn't the evidence."""
+        result = answer_service.ask("what does Acme build", limit=10, use_llm=False)
+        assert result["retrieved_count"] >= result["evidence_count"]
+
+    def test_every_citation_number_is_reachable_from_the_cards(self, wide):
+        result = answer_service.ask("what does Acme build", limit=10, use_llm=False)
+        cited_urls = {c["page_url"] for c in result["citations"]}
+        card_urls = {m["page_url"] for c in result["companies"] for m in c["matches"]}
+        assert cited_urls == card_urls
+
+    def test_the_quoted_answer_only_quotes_used_passages(self, wide):
+        """The no-LLM path must not quote a passage the LLM path would never have seen."""
+        result = answer_service.ask("what does Acme build", limit=10, use_llm=False)
+        used_texts = [m["text"] for c in result["companies"] for m in c["matches"]]
+        quoted = result["answer"]
+        for line in quoted.split("\n"):
+            line = line.strip().lstrip("- ").rstrip()
+            if not line or line.startswith("**") or line.startswith("_"):
+                continue
+            stem = line.split("…")[0][:60]
+            assert any(stem in t for t in used_texts), f"quoted text not in used set: {stem!r}"

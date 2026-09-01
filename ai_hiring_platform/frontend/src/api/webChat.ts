@@ -128,7 +128,7 @@ export function deleteWebCompany(companyId: string): Promise<Record<string, numb
 export function askWeb(
   message: string,
   companyId?: string,
-  limit = 8,
+  limit = 6,
 ): Promise<WebChatResponse> {
   return call<WebChatResponse>('/chat/query', {
     method: 'POST',
@@ -154,7 +154,10 @@ export async function askWebStreaming(
   message: string,
   onStage: (stage: string, detail: string) => void,
   companyId?: string,
-  limit = 8,
+  // A little above the prompt budget so the diversity cap still has candidates to
+  // choose between, but nowhere near the old 8 — retrieving far more than the answer
+  // can use is what let the UI display passages the model never read.
+  limit = 6,
 ): Promise<WebChatResponse> {
   let response: Response;
   try {

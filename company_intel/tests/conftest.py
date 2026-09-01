@@ -12,6 +12,7 @@ about what survived it.
 from __future__ import annotations
 
 import math
+import zlib
 from typing import Any, Dict, List, Optional, Sequence
 
 import pytest
@@ -131,10 +132,15 @@ def _bag_of_words_vector(text: str, dim: int = 32) -> List[float]:
     Not a good embedding — it has no semantics at all — but it is stable, needs no
     model download, and gives related texts overlapping dimensions, which is enough to
     test that retrieval wiring, filtering and ordering behave.
+
+    CRC32 rather than the builtin `hash()`: Python salts string hashing per process, so
+    `hash()` here made every ranking assertion pass or fail by luck. A retrieval test
+    that depends on PYTHONHASHSEED is worse than no test, because a red run tells you
+    nothing and a green one tells you less.
     """
     vector = [0.0] * dim
     for token in (text or "").lower().split():
-        vector[hash(token) % dim] += 1.0
+        vector[zlib.crc32(token.encode("utf-8")) % dim] += 1.0
     return vector or [0.0] * dim
 
 

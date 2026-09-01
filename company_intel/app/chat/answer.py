@@ -22,24 +22,29 @@ from app.core.logging import logger
 from app.chat import guardrails, retrieval
 
 
-def _extractive(result: retrieval.RetrievalResult, citations: List[dict]) -> str:
+def _extractive(
+    result: retrieval.RetrievalResult, citations: List[dict], used: List
+) -> str:
     """
     The no-LLM answer: what the sources say, quoted and attributed.
 
     Grouped by company so a pool-wide question reads as a comparison rather than a list
-    of disconnected paragraphs.
+    of disconnected paragraphs. Quotes only the passages that were actually used, so
+    this path shows exactly what the LLM path would have been given.
     """
     lines: List[str] = []
     by_company: Dict[str, List] = {}
-    for item in result.evidence:
+    for item in used:
         by_company.setdefault(item.company_name or item.company_id, []).append(item)
 
     for company_name, items in by_company.items():
         lines.append(f"**{company_name}**")
         for item in items[:3]:
             snippet = item.text.strip()
-            if len(snippet) > 400:
-                snippet = snippet[:400].rsplit(" ", 1)[0] + "…"
+            # Shorter than the card's own clamp: this text IS the answer here, and a
+            # 400-character quote per passage is what made the no-LLM path a wall.
+            if len(snippet) > 260:
+                snippet = snippet[:260].rsplit(" ", 1)[0] + "…"
             number = next(
                 (c["n"] for c in citations if c["page_url"] == item.page_url), None
             )
@@ -182,8 +187,13 @@ def ask(
         f"Grounding {len(result.evidence)} passage(s) from "
         f"{len({e.company_id for e in result.evidence})} company(ies)",
     )
+    # The passages that actually enter the prompt. Everything the caller is shown is
+    # built from THIS list and nothing wider: retrieval routinely returns more than the
+    # model is given, and presenting the surplus as the reasoning behind an answer is a
+    # quiet lie in a system whose whole claim is that answers are auditable.
+    used = result.evidence[: settings.ANSWER_MAX_CONTEXT_CHUNKS]
     context, citations, tampered = guardrails.build_context(
-        result.evidence, max_chunks=settings.ANSWER_MAX_CONTEXT_CHUNKS
+        used, max_chunks=settings.ANSWER_MAX_CONTEXT_CHUNKS
     )
 
     text = None
@@ -193,7 +203,7 @@ def ask(
     else:
         progress("answering", "Assembling the answer from the sources")
     if text is None:
-        text = _extractive(result, citations)
+        text = _extractive(result, citations, used)
         llm_used = False
     else:
         llm_used = True
@@ -209,9 +219,12 @@ def ask(
         "refused": False,
         "scope": result.scope,
         "company": result.company,
-        "companies": retrieval.group_by_company(result.evidence),
+        "companies": retrieval.group_by_company(used),
         "citations": citations,
-        "evidence_count": len(result.evidence),
+        # The number of passages the answer was WRITTEN from, not the number retrieved.
+        # The UI reports this to the reader, so it has to mean what they assume it does.
+        "evidence_count": len(used),
+        "retrieved_count": len(result.evidence),
         "intent": result.intent,
         "llm_used": llm_used,
         "duration_seconds": round(time.time() - started, 3),

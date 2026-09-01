@@ -117,7 +117,12 @@ class ChatResponse(BaseModel):
     company: Optional[Dict[str, Any]] = None
     companies: List[Dict[str, Any]] = []
     citations: List[Citation] = []
+    # How many passages the answer was WRITTEN from. `companies` and `citations`
+    # describe exactly this set — never a wider one.
     evidence_count: int = 0
+    # How many cleared retrieval before the prompt budget trimmed them. Reported for
+    # diagnostics only; it is not what the answer stands on.
+    retrieved_count: int = 0
     intent: str = ""
     llm_used: bool = False
     duration_seconds: float = 0.0
