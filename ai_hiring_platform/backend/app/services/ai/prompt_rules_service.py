@@ -5,7 +5,7 @@ WHY THIS IS ALGORITHMIC, NOT AN LLM JUDGE
 A prompt is a specification: "keep it to 1-2 lines", "plain URL only", "state years
 only when the context proves them". Whether an answer honours that specification is a
 measurement, not an opinion — so it is measured, exactly like every other score in the
-platform (CLAUDE.md §4). An LLM judge would give a different verdict on reruns, which
+platform. An LLM judge would give a different verdict on reruns, which
 is the one thing a regression suite cannot tolerate.
 
 Each rule is a pure function of (expectations, prompt, turn, answer) and returns

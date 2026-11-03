@@ -1,6 +1,6 @@
 # Build prompt: CompanyIntel.Api (.NET)
 
-Paste everything below the line into a fresh Claude Code session, in an empty
+Use everything below the line as the brief for a new project, in an empty
 directory. It is written to be executed, not just read.
 
 ---

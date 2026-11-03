@@ -651,7 +651,7 @@ Full template: [`company_intel/.env.example`](company_intel/.env.example).
 
 ## API reference
 
-Each service publishes interactive documentation: FastAPI at `/docs`, and the Job Portal API at `/swagger` in Development. The hand-maintained contract between the hiring backend and the frontend is in [`.claude/project/api_contract.md`](.claude/project/api_contract.md).
+Each service publishes interactive documentation: FastAPI at `/docs`, and the Job Portal API at `/swagger` in Development.
 
 ### Hiring backend (`/api/v1`)
 
@@ -809,7 +809,7 @@ Treat absolute scores with caution on this path, and review the evidence behind 
 - **Company Intelligence cannot read everything.** PDFs are skipped, JavaScript-heavy sites need the opt-in rendering mode, and sites that block crawlers stay blocked.
 - **Conversation memory is in-process** in the hiring backend, so it resets on restart.
 - **Licensing.** The repository has no `LICENSE` file, so no open-source licence is granted by default.
-- **Open work** is tracked in [TASKS.md](TASKS.md) and [roadmap.md](.claude/project/roadmap.md).
+- **Open work** is tracked in [TASKS.md](TASKS.md).
 
 ## Repository structure
 
@@ -855,7 +855,6 @@ Treat absolute scores with caution on this path, and review the evidence behind 
 ├── prompts/                   # System prompts, with their input and output contracts
 ├── docs/screenshots/          # Images used in this document
 ├── src/, data/                # Legacy personality predictor
-├── .claude/                   # Project knowledge base, decision log, developer commands
 ├── .github/workflows/ci.yml
 ├── Dockerfile                 # Single-container deploy of frontend + hiring backend
 ├── docker-compose.rag.yml     # PostgreSQL + Qdrant for RAG mode
@@ -868,11 +867,9 @@ Treat absolute scores with caution on this path, and review the evidence behind 
 
 | Document | Covers |
 |---|---|
-| [CLAUDE.md](CLAUDE.md) | Project rules, architecture invariants, and working conventions |
 | [Match_Score.md](ai_hiring_platform/docs/Match_Score.md) | Full scoring specification |
 | [Retrieval_Explained.md](ai_hiring_platform/docs/Retrieval_Explained.md) | A resume's path from upload to search |
 | [Algorithms.md](ai_hiring_platform/docs/Algorithms.md), [Workflow.md](ai_hiring_platform/docs/Workflow.md), [architecture.md](ai_hiring_platform/docs/architecture.md) | Algorithm, workflow, and architecture specifications |
-| [decisions.md](.claude/project/decisions.md) | Architecture decision log with rationale |
 | [job_portal/README.md](job_portal/README.md) | Job Portal design and defects found |
 | [company_intel/README.md](company_intel/README.md), [running.md](company_intel/docs/running.md), [linkedin.md](company_intel/docs/linkedin.md) | Crawler design, operations, and LinkedIn approach |
 | [prompts/README.md](prompts/README.md) | System prompts and their contracts |
@@ -880,4 +877,4 @@ Treat absolute scores with caution on this path, and review the evidence behind 
 | [model_architecture.md](model_architecture.md) | Legacy personality predictor |
 | [AI_Hiring_Platform_Interview_Guide.pdf](AI_Hiring_Platform_Interview_Guide.pdf) | Interview preparation guide |
 
-> Some older documents, including `ai_hiring_platform/README.md` and parts of `CLAUDE.md`, describe earlier versions, such as a 384-dimension BGE model or lower test counts. Where they differ, this README reflects the current code.
+> Some older documents, including `ai_hiring_platform/README.md`, describe earlier versions, such as a 384-dimension BGE model or lower test counts. Where they differ, this README reflects the current code.

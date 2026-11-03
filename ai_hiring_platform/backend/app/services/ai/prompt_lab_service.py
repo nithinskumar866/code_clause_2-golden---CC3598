@@ -10,7 +10,7 @@ prompts side by side, and a deterministic verdict per rule
 (`prompt_rules_service`) — so a prompt change is an experiment with a result rather than
 a hunch.
 
-THE DIVISION OF LABOUR IS THE USUAL ONE (CLAUDE.md §4)
+THE DIVISION OF LABOUR IS THE USUAL ONE
 The LLM only GENERATES the answer under test. Everything that decides whether that
 answer is acceptable is algorithmic and reproducible. Nothing here reads a resume, ranks
 a candidate or joins the hiring workflow — it is a test harness, not a third agent.
