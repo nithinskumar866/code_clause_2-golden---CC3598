@@ -271,7 +271,7 @@ STARTER_PROMPT = """When answering a person/employee query:
 _DIRECTORY = (
     "PEOPLE DIRECTORY:\n"
     "Name=Priya Raman | Role=Senior Data Engineer | Team=Platform | "
-    "LinkedIn=https://www.linkedin.com/in/priya-raman | "
+    "LinkedIn=https://www.linkedin.com/in/sample-profile | "
     "Skills=Apache Spark, Airflow, dbt, Snowflake, Python"
 )
 _DIRECTORY_WITH_YEARS = _DIRECTORY + " | Experience=9 years"
@@ -294,7 +294,7 @@ STARTER_CASES: List[Dict[str, Any]] = [
             {"role": "user", "content": "Who is Priya Raman?"},
             {"role": "assistant", "content":
                 "Priya Raman is a Senior Data Engineer on the Platform team. "
-                "https://www.linkedin.com/in/priya-raman"},
+                "https://www.linkedin.com/in/sample-profile"},
         ],
         "expectations": {"max_lines": 2, "max_chars": 260, "years_known": False, "link_allowed": True},
     },
@@ -307,7 +307,7 @@ STARTER_CASES: List[Dict[str, Any]] = [
             {"role": "user", "content": "Who is Priya Raman?"},
             {"role": "assistant", "content":
                 "Priya Raman is a Senior Data Engineer on the Platform team. "
-                "https://www.linkedin.com/in/priya-raman"},
+                "https://www.linkedin.com/in/sample-profile"},
         ],
         "expectations": {
             "max_lines": 2, "max_chars": 260, "years_known": True, "expected_years": "9",
@@ -322,7 +322,7 @@ STARTER_CASES: List[Dict[str, Any]] = [
             {"role": "user", "content": "Who is Priya Raman?"},
             {"role": "assistant", "content":
                 "Priya Raman is a Senior Data Engineer on the Platform team. "
-                "https://www.linkedin.com/in/priya-raman"},
+                "https://www.linkedin.com/in/sample-profile"},
         ],
         "expectations": {
             "max_lines": 2, "max_chars": 400, "skills_requested": True,
@@ -338,7 +338,7 @@ STARTER_CASES: List[Dict[str, Any]] = [
             {"role": "user", "content": "Who is Priya Raman?"},
             {"role": "assistant", "content":
                 "Priya Raman is a Senior Data Engineer on the Platform team. "
-                "https://www.linkedin.com/in/priya-raman"},
+                "https://www.linkedin.com/in/sample-profile"},
         ],
         "expectations": {"max_lines": 2, "max_chars": 200},
     },

@@ -113,7 +113,7 @@ def test_payload_carries_the_whole_row_not_just_the_embedded_field():
         "company_id": "acme",
         "company_name": "Acme",
         "fields": {"about": "An engineering firm.", "culture": "Flat and fast.", "founded_year": "1968"},
-        "people": [{"name": "Asha Rao", "role": "CTO"}],
+        "people": [{"name": "Alex Sample", "role": "CTO"}],
     }
     payload = excel_loader.build_payload(record, "about", ["about", "culture"])
     assert payload["field"] == "about"
@@ -122,7 +122,7 @@ def test_payload_carries_the_whole_row_not_just_the_embedded_field():
     # so a follow-up is answerable without a second round trip.
     assert payload["fields"]["culture"] == "Flat and fast."
     assert payload["fields"]["founded_year"] == "1968"
-    assert payload["people"][0]["name"] == "Asha Rao"
+    assert payload["people"][0]["name"] == "Alex Sample"
 
 
 def test_embedding_text_carries_company_and_field_context():
@@ -150,7 +150,7 @@ def stub_index(monkeypatch):
             "company_name": name,
             "field": "about",
             "text": text[cid],
-            "people": [{"name": "Asha Rao", "role": "CTO"}] if cid == "infosys" else [],
+            "people": [{"name": "Alex Sample", "role": "CTO"}] if cid == "infosys" else [],
         }
         for cid, name in companies.items()
     ]
@@ -180,7 +180,7 @@ def test_two_named_companies_are_both_found(stub_index):
 
 
 def test_people_are_found_by_exact_name_from_the_company_payload(stub_index):
-    people = company_retrieval.find_people("what does Asha Rao do?")
+    people = company_retrieval.find_people("what does Alex Sample do?")
     assert [p["company_id"] for p in people] == ["infosys"]
 
 
@@ -332,15 +332,15 @@ def test_a_people_sheet_attaches_people_to_their_company(tmp_path):
 
     people = workbook.create_sheet("People")
     people.append(["Company", "Name", "Role", "Email"])
-    people.append(["DXC Technology", "Asha Rao", "VP Engineering", "asha@dxc.com"])
-    people.append(["DXC Technology", "Raul Fernandez", "President & CEO", "raul@dxc.com"])
+    people.append(["DXC Technology", "Alex Sample", "VP Engineering", "alex@example.com"])
+    people.append(["DXC Technology", "Sam Sample", "President & CEO", "sam@example.com"])
     path = tmp_path / "with_people.xlsx"
     workbook.save(path)
 
     records, _ = excel_loader.read_workbook(str(path))
-    assert [p["name"] for p in records[0]["people"]] == ["Asha Rao", "Raul Fernandez"]
+    assert [p["name"] for p in records[0]["people"]] == ["Alex Sample", "Sam Sample"]
     # Whatever extra columns the sheet carried are kept, not just a known few.
-    assert records[0]["people"][0]["email"] == "asha@dxc.com"
+    assert records[0]["people"][0]["email"] == "alex@example.com"
 
 
 def test_each_person_becomes_a_searchable_point_of_their_own(monkeypatch):
@@ -367,7 +367,7 @@ def test_each_person_becomes_a_searchable_point_of_their_own(monkeypatch):
             "company_id": "dxc",
             "company_name": "DXC Technology",
             "fields": {"about": "Enterprise technology services."},
-            "people": [{"name": "Asha Rao", "role": "VP Engineering", "email": "asha@dxc.com"}],
+            "people": [{"name": "Alex Sample", "role": "VP Engineering", "email": "alex@example.com"}],
         }
     ]
     points = excel_loader.build_points(records, ["about"])
@@ -376,7 +376,7 @@ def test_each_person_becomes_a_searchable_point_of_their_own(monkeypatch):
     assert fields == ["about", qdrant_store.PERSON_FIELD]
 
     person_point = points[-1]
-    assert person_point["payload"]["person_name"] == "Asha Rao"
+    assert person_point["payload"]["person_name"] == "Alex Sample"
     assert person_point["payload"]["person"]["role"] == "VP Engineering"
     # The person's point still carries their employer's record, so a follow-up about
     # the company needs no second round trip.
@@ -384,15 +384,15 @@ def test_each_person_becomes_a_searchable_point_of_their_own(monkeypatch):
 
     # What was actually embedded describes the person, not just their name.
     embedded = engine.texts[-1]
-    assert "Asha Rao" in embedded and "DXC Technology" in embedded and "VP Engineering" in embedded
+    assert "Alex Sample" in embedded and "DXC Technology" in embedded and "VP Engineering" in embedded
 
 
 def test_a_person_keeps_one_point_when_the_sheet_is_reordered():
     """Ids are keyed on the name, so inserting a row above someone does not clone them."""
-    first = qdrant_store.person_point_id("dxc", "Asha Rao")
-    assert first == qdrant_store.person_point_id("dxc", "  asha rao  ")
-    assert first != qdrant_store.person_point_id("dxc", "Raul Fernandez")
-    assert first != qdrant_store.person_point_id("infosys", "Asha Rao")
+    first = qdrant_store.person_point_id("dxc", "Alex Sample")
+    assert first == qdrant_store.person_point_id("dxc", "  alex sample  ")
+    assert first != qdrant_store.person_point_id("dxc", "Sam Sample")
+    assert first != qdrant_store.person_point_id("infosys", "Alex Sample")
 
 
 def test_a_person_with_no_name_is_skipped_rather_than_stored_blank(monkeypatch):

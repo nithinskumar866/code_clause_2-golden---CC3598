@@ -1,6 +1,6 @@
 # Point every service at a new RunPod pod.
 #
-#   .\update-runpod.ps1 f9ogfpvbwc4egt
+#   .\update-runpod.ps1 <pod-id>
 #
 # A RunPod pod gets a NEW id every time it is started, and that id appears in four
 # places across two projects. Editing them by hand is four chances to miss one and then

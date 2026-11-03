@@ -33,8 +33,8 @@ ai_hiring_platform/storage/
 ai_hiring_platform/backend/logs/
 
 # ---- Local test artifacts (real candidate documents — never commit) ----
-/*-Amulya_Sahani_Resume/
-/*-Amulya_Sahani_Resume.zip
+/*_Resume/
+/*_Resume.zip
 /DevOps_Engineer_Job_Description.docx
 
 # ---- Extracted-for-porting copies (generated, not source) ----

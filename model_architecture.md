@@ -60,7 +60,7 @@ During training on the labeled dataset, the Linear Regression optimizer adjusts 
 
 ## 4. End-to-End Processing Walkthrough
 
-When a user submits a resume (either pasting it or selecting a row), the following sequence runs in [src/app.py](file:///e:/projects%20from%20desktops/codeclause2/src/app.py):
+When a user submits a resume (either pasting it or selecting a row), the following sequence runs in [src/app.py](src/app.py):
 
 1.  **Input Extraction**: The text string is retrieved from the Streamlit text area or CSV column.
 2.  **Vectorization**: The fitted `tfidf_vectorizer.joblib` transforms the text into a numerical sparse matrix of shape `(1, Vocabulary_Size)`.

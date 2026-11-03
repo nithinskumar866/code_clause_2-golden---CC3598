@@ -3,7 +3,7 @@
 ## Every time — the short version
 
 ```powershell
-cd "d:\nithin.s works\jd comparre\code_clause_2-golden---CC3598\company_intel"
+cd company_intel
 .\run.ps1
 ```
 
@@ -73,7 +73,7 @@ $B = "http://localhost:8123/api/v1"
 # 1. register — LinkedIn URLs are stored as links, never crawled
 irm "$B/companies" -Method Post -ContentType application/json -Body '{
   "name": "Acme", "domain": "acme.com",
-  "linkedin_urls": ["https://www.linkedin.com/in/jane-doe"],
+  "linkedin_urls": ["https://www.linkedin.com/in/sample-person"],
   "deny_patterns": ["/blog/20", "/tag/"]
 }'
 

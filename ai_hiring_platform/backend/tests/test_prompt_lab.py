@@ -21,14 +21,14 @@ from app.services.ai.prompt_rules_service import Expectations, Turn
 PROFILE = (
     "PEOPLE DIRECTORY:\n"
     "Name=Priya Raman | Role=Senior Data Engineer | Team=Platform | "
-    "LinkedIn=https://www.linkedin.com/in/priya-raman | "
+    "LinkedIn=https://www.linkedin.com/in/sample-profile | "
     "Skills=Apache Spark, Airflow, dbt"
 )
 
 THREAD = [
     {"role": "user", "content": "Who is Priya Raman?"},
     {"role": "assistant", "content":
-        "Priya Raman is a Senior Data Engineer on Platform. https://www.linkedin.com/in/priya-raman"},
+        "Priya Raman is a Senior Data Engineer on Platform. https://www.linkedin.com/in/sample-profile"},
 ]
 
 
@@ -71,8 +71,8 @@ def test_brevity_catches_one_very_long_line_that_the_line_rule_misses():
 
 
 def test_markdown_link_fails_and_a_plain_url_passes():
-    md = "Priya Raman is a Senior Data Engineer. [profile](https://www.linkedin.com/in/priya-raman)"
-    plain = "Priya Raman is a Senior Data Engineer. https://www.linkedin.com/in/priya-raman"
+    md = "Priya Raman is a Senior Data Engineer. [profile](https://www.linkedin.com/in/sample-profile)"
+    plain = "Priya Raman is a Senior Data Engineer. https://www.linkedin.com/in/sample-profile"
     assert verdict(grade(md, {"link_allowed": True}), "plain_urls") == rules.FAIL
     assert verdict(grade(plain, {"link_allowed": True}), "plain_urls") == rules.PASS
 
@@ -82,7 +82,7 @@ def test_plain_url_rule_is_not_applicable_when_there_is_no_url():
 
 
 def test_link_given_where_the_turn_forbids_one_fails():
-    answer = "She is on the Platform team. https://www.linkedin.com/in/priya-raman"
+    answer = "She is on the Platform team. https://www.linkedin.com/in/sample-profile"
     assert verdict(grade(answer, {"link_allowed": False}), "link_policy") == rules.FAIL
 
 
@@ -91,13 +91,13 @@ def test_link_missing_where_the_turn_requires_one_fails():
 
 
 def test_repeating_a_link_already_given_in_the_thread_fails():
-    answer = "She is on the Platform team. https://www.linkedin.com/in/priya-raman"
+    answer = "She is on the Platform team. https://www.linkedin.com/in/sample-profile"
     result = grade(answer, {"link_allowed": True}, history=THREAD, question="Which team is he on again?")
     assert verdict(result, "no_repeated_link") == rules.FAIL
 
 
 def test_repeat_rule_stands_down_when_the_user_asks_for_the_link():
-    answer = "https://www.linkedin.com/in/priya-raman"
+    answer = "https://www.linkedin.com/in/sample-profile"
     result = grade(answer, {"link_required": True, "link_allowed": True}, history=THREAD,
                    question="Send me her profile link")
     assert verdict(result, "no_repeated_link") == rules.NA
@@ -110,7 +110,7 @@ def test_a_url_absent_from_the_context_is_ungrounded():
 
 
 def test_the_derived_skills_url_counts_as_grounded():
-    answer = "Spark, Airflow and dbt. https://www.linkedin.com/in/priya-raman/details/skills/"
+    answer = "Spark, Airflow and dbt. https://www.linkedin.com/in/sample-profile/details/skills/"
     result = grade(answer, {"skills_requested": True, "link_allowed": True}, question="What are her skills?")
     assert verdict(result, "grounded_urls") == rules.PASS
     assert verdict(result, "skills_url") == rules.PASS
@@ -122,8 +122,8 @@ def test_a_skills_answer_without_the_skills_url_fails():
 
 
 def test_an_explicit_linkedin_skills_url_in_context_is_the_one_expected():
-    context = PROFILE + "\nLinkedInSkills=https://www.linkedin.com/in/priya-raman/details/skills/"
-    assert rules.skills_url_for(context) == "https://www.linkedin.com/in/priya-raman/details/skills/"
+    context = PROFILE + "\nLinkedInSkills=https://www.linkedin.com/in/sample-profile/details/skills/"
+    assert rules.skills_url_for(context) == "https://www.linkedin.com/in/sample-profile/details/skills/"
 
 
 # ----------------------------------------------------------------------------- years
@@ -224,7 +224,7 @@ def test_the_starter_suite_covers_every_clause_it_claims_to():
 def test_a_compliant_answer_to_the_starter_intro_case_scores_full_marks():
     case = next(c for c in lab.starter_suite()["cases"] if c["id"] == "intro")
     answer = ("Priya Raman is a Senior Data Engineer on the Platform team. "
-              "https://www.linkedin.com/in/priya-raman")
+              "https://www.linkedin.com/in/sample-profile")
     result = lab.score_case(lab.STARTER_PROMPT, case, answer)
     assert result["failed"] == 0, result["violations"]
     assert result["score"] == 100.0
@@ -235,7 +235,7 @@ def test_the_violating_answer_the_prompt_is_accused_of_is_caught():
     case = next(c for c in lab.starter_suite()["cases"] if c["id"] == "years-unknown")
     answer = (
         "Priya Raman has approximately 12 years of experience in data engineering.\n"
-        "You can view her profile here: [LinkedIn](https://www.linkedin.com/in/priya-raman)\n"
+        "You can view her profile here: [LinkedIn](https://www.linkedin.com/in/sample-profile)\n"
         "Roles that may suit her:\n- Principal Data Engineer\n- Head of Platform"
     )
     result = lab.score_case(lab.STARTER_PROMPT, case, answer)
@@ -299,7 +299,7 @@ def test_score_endpoint_grades_without_an_llm(client):
         "prompt": lab.STARTER_PROMPT,
         "case": {"question": "Who is Priya Raman?", "context": PROFILE,
                  "expectations": {"max_lines": 2, "link_allowed": True}},
-        "answer": "Priya Raman is a Senior Data Engineer on Platform. https://www.linkedin.com/in/priya-raman",
+        "answer": "Priya Raman is a Senior Data Engineer on Platform. https://www.linkedin.com/in/sample-profile",
     })
     assert res.status_code == 200
     assert res.json()["data"]["failed"] == 0

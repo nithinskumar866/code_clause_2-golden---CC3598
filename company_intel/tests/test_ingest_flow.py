@@ -38,7 +38,7 @@ def acme(store, embedder, no_robots):
         name="Acme",
         domain="acme.com",
         seed_urls=["https://acme.com/"],
-        linkedin_urls=["https://www.linkedin.com/in/jane-doe"],
+        linkedin_urls=["https://www.linkedin.com/in/sample-person"],
     )
 
 
@@ -63,7 +63,7 @@ class TestRegistry:
 
     def test_linkedin_urls_are_stored_but_never_become_seeds(self, acme):
         """The whole LinkedIn position in one assertion: kept as a link, not a target."""
-        assert acme["linkedin_urls"] == ["https://www.linkedin.com/in/jane-doe"]
+        assert acme["linkedin_urls"] == ["https://www.linkedin.com/in/sample-person"]
         assert all("linkedin" not in seed for seed in acme["seed_urls"])
 
     def test_resolve_prefers_the_longer_name(self, store):

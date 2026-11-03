@@ -51,13 +51,13 @@ public class ApplicationScreeningTests
         {
             new ScreeningContactOption
             {
-                WorkMode = "Remote", Name = "John Nacks",
-                Url = "https://in.linkedin.com/in/john-nacks-990195228", Handles = "remote roles",
+                WorkMode = "Remote", Name = "Sample Remote Contact",
+                Url = "https://example.com/contacts/remote", Handles = "remote roles",
             },
             new ScreeningContactOption
             {
-                WorkMode = "Onsite", Name = "Abinaya Jagdish",
-                Url = "https://in.linkedin.com/in/abinaya-jagdish-466822210",
+                WorkMode = "Onsite", Name = "Sample Onsite Contact",
+                Url = "https://example.com/contacts/onsite",
                 Handles = "onsite and hybrid roles",
             },
         },
@@ -189,7 +189,7 @@ public class ApplicationScreeningTests
         var set = await Offline().BuildAsync(SpringBootPosting());
 
         Assert.Equal(2, set.Contacts.Count);
-        Assert.Equal("Abinaya Jagdish", set.Contacts[0].Name);
+        Assert.Equal("Sample Onsite Contact", set.Contacts[0].Name);
         Assert.True(set.Contacts[0].Relevant);
 
         // The other stays available — someone may want to ask about something else.
@@ -201,7 +201,7 @@ public class ApplicationScreeningTests
     {
         var set = await Offline().BuildAsync(RemoteDataSciencePosting());
 
-        Assert.Equal("John Nacks", set.Contacts[0].Name);
+        Assert.Equal("Sample Remote Contact", set.Contacts[0].Name);
         Assert.True(set.Contacts[0].Relevant);
     }
 
@@ -215,7 +215,7 @@ public class ApplicationScreeningTests
 
         var set = await Offline().BuildAsync(job);
 
-        Assert.Equal("Abinaya Jagdish", set.Contacts[0].Name);
+        Assert.Equal("Sample Onsite Contact", set.Contacts[0].Name);
         Assert.True(set.Contacts[0].Relevant);
     }
 

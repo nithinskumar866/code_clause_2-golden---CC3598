@@ -51,7 +51,7 @@ before the model is called.
 # 1. register a company (LinkedIn URLs are stored as links, never crawled)
 curl -X POST localhost:8123/api/v1/companies -H 'content-type: application/json' -d '{
   "name": "Acme", "domain": "acme.com",
-  "linkedin_urls": ["https://www.linkedin.com/in/jane-doe"],
+  "linkedin_urls": ["https://www.linkedin.com/in/sample-person"],
   "deny_patterns": ["/blog/20", "/tag/"]
 }'
 
