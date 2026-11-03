@@ -55,17 +55,16 @@
     <Error
       Condition="!Exists('$(LaunchSettingsFile)')"
       Text="launchSettings.json not found at $(LaunchSettingsFile)" />
-    <Error
-      Condition="!Exists('$(FrontendEnvFile)')"
-      Text="Frontend .env not found at $(FrontendEnvFile)" />
     <!-- Extract HTTP port from launchSettings.json (http profile) -->
-    <PropertyGroup>
+    <!-- The file is gitignored and belongs to the retired frontend, so a fresh clone
+         does not have it. Compare ports only when it exists. -->
+    <PropertyGroup Condition="Exists('$(FrontendEnvFile)')">
       <LaunchSettingsContent>$([System.IO.File]::ReadAllText('$(LaunchSettingsFile)'))</LaunchSettingsContent>
       <FrontendEnvContent>$([System.IO.File]::ReadAllText('$(FrontendEnvFile)'))</FrontendEnvContent>
     </PropertyGroup>
     <!-- This is a basic check - in practice you'd want more robust JSON parsing -->
     <Warning
-      Condition="!$(LaunchSettingsContent.Contains('5290')) Or !$(FrontendEnvContent.Contains('5290'))"
+      Condition="Exists('$(FrontendEnvFile)') And (!$(LaunchSettingsContent.Contains('5290')) Or !$(FrontendEnvContent.Contains('5290')))"
       Text="Port mismatch detected: launchSettings.json HTTP port should match VITE_API_BASE in frontend/.env (expected 5290). Current launchSettings: $(LaunchSettingsContent), Frontend .env: $(FrontendEnvContent)" />
   </Target>
 </Project>

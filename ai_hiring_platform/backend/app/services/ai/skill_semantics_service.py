@@ -97,6 +97,18 @@ def classify_category(requirement: str) -> str:
         return FALLBACK_CATEGORY
 
 
+def _same_family(a: str, b: str) -> bool:
+    """Whether one skill's name ends with the other's and their meanings agree."""
+    a, b = a.strip().lower(), b.strip().lower()
+    short, long = sorted((a, b), key=len)
+    return (
+        len(short) >= 3
+        and len(long) > len(short)
+        and long.endswith(short)
+        and _cosine(_embed(a), _embed(b)) >= settings.SKILL_FAMILY_MIN
+    )
+
+
 def find_related_skill(
     requirement: str,
     candidate_skills: List[str],
@@ -139,6 +151,9 @@ def find_related_skill(
 
         if best_cos >= settings.SKILL_EQUIVALENCE_MIN:
             return best_skill, round(best_cos, 3), "equivalent"
+        for skill in candidate_skills:
+            if skill and skill.lower() not in exclude and _same_family(requirement, skill):
+                return skill, round(_cosine(req_vec, _embed(skill)), 3), "equivalent"
         if best_same_cos >= settings.SKILL_RELATED_MIN:
             return best_same_skill, round(best_same_cos, 3), "related"
         return best_skill, round(best_cos, 3), "none"

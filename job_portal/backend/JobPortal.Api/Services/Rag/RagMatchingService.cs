@@ -40,6 +40,30 @@ public interface IRagMatchingService
 }
 
 /// <summary>
+/// Stands in when the RAG mode is disabled or has no storage configured.
+///
+/// Callers check <see cref="IsAvailableAsync"/> first, so the other two members are
+/// never reached in normal use; they throw rather than return an empty shortlist,
+/// which would read as "no roles matched".
+/// </summary>
+public class UnavailableRagMatchingService : IRagMatchingService
+{
+    private const string Reason = "The RAG scoring mode is not configured.";
+
+    public Task<bool> IsAvailableAsync(CancellationToken ct = default) => Task.FromResult(false);
+
+    public Task<RagShortlist> StartAsync(
+        PortalResume resume, JobFilters filters, string batchId,
+        Func<MatchResultDto, CancellationToken, Task> emit, CancellationToken ct = default)
+        => throw new InvalidOperationException(Reason);
+
+    public Task ContinueAsync(
+        RagShortlist state, Func<MatchResultDto, CancellationToken, Task> emit,
+        CancellationToken ct = default)
+        => throw new InvalidOperationException(Reason);
+}
+
+/// <summary>
 /// The RAG scoring mode.
 ///
 /// The two stages, joined:

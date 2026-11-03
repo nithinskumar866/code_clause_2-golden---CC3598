@@ -92,3 +92,25 @@ def test_rank_dedupes_resume_ids(db_session, monkeypatch):
     result = ranking_service.rank_candidates(db_session, jd.id, [rid, rid, rid])
     assert result.candidate_count == 1
     assert calls == [rid]
+
+
+def test_re_evaluation_refreshes_the_stored_scores(db_session, monkeypatch, tmp_path):
+    """History, the dashboard and analytics read the columns, not the report file."""
+    from app.models.database import Analysis
+
+    resume = Resume(filename="r.pdf")
+    jd = JobDescription(filename="j.pdf")
+    db_session.add_all([resume, jd])
+    db_session.commit()
+    (tmp_path / f"{resume.id}_r.pdf").write_text("x")
+    (tmp_path / f"{jd.id}_j.pdf").write_text("x")
+    monkeypatch.setattr(ranking_service, "RESUME_UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(ranking_service, "JOB_UPLOAD_DIR", str(tmp_path))
+
+    scores = iter([64.2, 67.7])
+    monkeypatch.setattr(ranking_service, "execute_hiring_pipeline", lambda **_: _report(next(scores)))
+
+    ranking_service.run_evaluation(db_session, resume.id, jd.id)
+    analysis_id, _ = ranking_service.run_evaluation(db_session, resume.id, jd.id)
+
+    assert db_session.get(Analysis, analysis_id).overall_score == 67.7

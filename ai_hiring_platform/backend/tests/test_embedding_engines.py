@@ -24,7 +24,7 @@ def reset_gpu_engine():
 def test_local_engine_is_the_default_and_always_available():
     engine = embedding_engines.resolve_engine(None)
     assert engine.name == "bge"
-    assert engine.dimension == 384
+    assert engine.dimension == 1024
     assert engine.available()
 
 

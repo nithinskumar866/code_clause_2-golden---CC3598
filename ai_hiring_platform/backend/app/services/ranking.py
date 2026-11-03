@@ -62,6 +62,13 @@ def run_evaluation(
             resume_uploaded_at=db_resume.upload_time,
         )
         db_analysis.status = STATUS_ANALYSED
+        # History, the dashboard and analytics read these columns. A re-evaluation reuses
+        # this row, so without refreshing them they keep showing the previous score.
+        db_analysis.overall_score = round(float(final_report.get("overall_score") or 0), 1)
+        db_analysis.coverage_score = int(final_report.get("coverage_score") or 0)
+        db_analysis.experience_score = int(final_report.get("experience_score") or 0)
+        db_analysis.project_score = int(final_report.get("project_score") or 0)
+        db_analysis.quality_score = int(final_report.get("quality_score") or 0)
         db_resume.status = "Indexed"
         db_jd.status = "Indexed"
         db.commit()

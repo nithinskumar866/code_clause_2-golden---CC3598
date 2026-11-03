@@ -22,16 +22,18 @@ namespace JobPortal.Api.Controllers;
 [Route("api/rag")]
 public class RagController : ControllerBase
 {
-    private readonly RagDbContext _rag;
-    private readonly IRagVectorStore _vectors;
-    private readonly RagIngestionQueue _queue;
+    private readonly RagDbContext? _rag;
+    private readonly IRagVectorStore? _vectors;
+    private readonly RagIngestionQueue? _queue;
     private readonly RagOptions _options;
 
+    // Optional because AddRagMode registers none of these when the mode is off, and a
+    // status endpoint should say so rather than fail to construct.
     public RagController(
-        RagDbContext rag,
-        IRagVectorStore vectors,
-        RagIngestionQueue queue,
-        IOptions<RagOptions> options)
+        IOptions<RagOptions> options,
+        RagDbContext? rag = null,
+        IRagVectorStore? vectors = null,
+        RagIngestionQueue? queue = null)
     {
         _rag = rag;
         _vectors = vectors;
@@ -60,6 +62,18 @@ public class RagController : ControllerBase
     [HttpGet("status")]
     public async Task<ActionResult<ApiResponse<RagStatus>>> Status(CancellationToken ct)
     {
+        if (_rag is null || _vectors is null || _queue is null)
+        {
+            return Ok(ApiResponse<RagStatus>.Ok(
+                new RagStatus(
+                    Available: false,
+                    QueueDepth: 0,
+                    Collections: Array.Empty<CollectionStatus>(),
+                    ByStatus: new Dictionary<string, int>(),
+                    RecentFailures: Array.Empty<string>()),
+                "The RAG scoring mode is not configured."));
+        }
+
         var available = await _vectors.IsAvailableAsync(ct);
 
         var collections = new List<CollectionStatus>();
@@ -105,6 +119,8 @@ public class RagController : ControllerBase
     public async Task<ActionResult<ApiResponse<string>>> Reindex(
         string parentType, int parentId, CancellationToken ct)
     {
+        if (_rag is null || _queue is null) return NotConfigured();
+
         var type = Normalise(parentType);
         if (type is null) return BadRequest(ApiResponse<string>.Fail("parentType must be 'resume' or 'job'."));
 
@@ -129,6 +145,8 @@ public class RagController : ControllerBase
     public async Task<ActionResult<ApiResponse<string>>> ReindexAll(
         [FromQuery] bool includeFailed = true, CancellationToken ct = default)
     {
+        if (_rag is null) return NotConfigured();
+
         var removed = includeFailed
             ? await _rag.IngestState.ExecuteDeleteAsync(ct)
             : await _rag.IngestState.Where(s => s.Status != RagIngestStatuses.Failed)
@@ -138,6 +156,10 @@ public class RagController : ControllerBase
             $"cleared {removed}",
             "Every document will be re-read on the next reconciliation sweep."));
     }
+
+    private ObjectResult NotConfigured() => StatusCode(
+        StatusCodes.Status503ServiceUnavailable,
+        ApiResponse<string>.Fail("The RAG scoring mode is not configured."));
 
     private static string? Normalise(string value) => value.ToLowerInvariant() switch
     {

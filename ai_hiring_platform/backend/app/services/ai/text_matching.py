@@ -164,6 +164,80 @@ def mentions_a_degree(text: str) -> bool:
     return bool(_DEGREE_ANY_CASE.search(text) or _DEGREE_CAPITALS.search(text))
 
 
+def mentions_term(text: str, term: str) -> bool:
+    """
+    Whether a passage literally names a term, as a whole word or phrase.
+
+    `PostgreSQL` in "Designed PostgreSQL schemas" counts; `java` in "JavaScript" does
+    not. Names of one or two letters only count when capitalised as written in the
+    term's proper form, because `go` and `r` are ordinary text in lowercase.
+    """
+    needle = (term or "").strip()
+    if not needle or not text:
+        return False
+    if len(needle) <= 2:
+        forms = f"{re.escape(needle.upper())}|{re.escape(needle.capitalize())}"
+        flags = 0
+    else:
+        forms, flags = re.escape(needle), re.I
+    pattern = rf"(?<![\w+#.])(?:{forms})(?![\w+#]|\.\w)"
+    if re.search(pattern, text, flags):
+        return True
+    # `ReactJS` and `React.js` name the same technology as `react`.
+    key = normalise(needle)
+    return len(key) > 2 and " " not in needle and any(
+        normalise(word) == key for word in re.findall(r"[\w+#.]+", text)
+    )
+
+
+# Levels of the awards `_DEGREE_ANY_CASE` recognises, so `B.Tech` satisfies "Bachelor's".
+_DEGREE_LEVELS = (
+    (3, re.compile(r"\b(?:ph\.?\s?d|doctorate)\b", re.I)),
+    (2, re.compile(r"\b(?:m\.\s?[eas]|m\.?\s?tech|m\.?\s?sc|m\.?\s?c\.?\s?a|m\.?\s?b\.?\s?a|masters?|post[\s-]?graduate)\b", re.I)),
+    (1, re.compile(r"\b(?:b\.\s?[eas]|b\.?\s?tech|b\.?\s?sc|b\.?\s?c\.?\s?a|b\.?\s?com|bachelors?)\b", re.I)),
+)
+_DEGREE_LEVELS_CAPITALS = {"BE": 1, "BA": 1, "BS": 1, "BSC": 1, "BTECH": 1, "ME": 2, "MA": 2, "MS": 2, "MSC": 2, "MTECH": 2}
+_DEGREE_WORDS = {
+    "degree", "degrees", "related", "field", "fields", "equivalent", "similar", "relevant",
+    "discipline", "qualification", "required", "preferred", "minimum", "bachelor", "bachelors",
+    "master", "masters", "doctorate", "phd", "ph.d", "diploma", "postgraduate",
+}
+
+
+def degree_level(text: str) -> int:
+    """1 for a bachelor's, 2 for a master's, 3 for a doctorate, 0 when none is named."""
+    if not text:
+        return 0
+    levels = [level for level, pattern in _DEGREE_LEVELS if pattern.search(text)]
+    levels += [level for word, level in _DEGREE_LEVELS_CAPITALS.items() if re.search(rf"\b{word}\b", text)]
+    return max(levels, default=0)
+
+
+def qualification_similarity(required: str, held: str) -> float:
+    """
+    How far a resume's qualification meets a JD's, 0.0-1.0.
+
+    Word overlap fails here because the same degree is written many ways: "B.Tech in
+    Computer Science" shares only two words with "Bachelor's degree in Computer Science
+    or a related field". So the level and the field are judged separately and weighted
+    equally. Falls back to plain word overlap when either side names no recognised award.
+    """
+    required_level, held_level = degree_level(required), degree_level(held)
+    if not required_level or not held_level:
+        return phrase_similarity(required, held)
+
+    def field(text: str) -> Set[str]:
+        return {
+            t for t in tokens(text)
+            if t not in _DEGREE_WORDS and not degree_level(t) and not degree_level(t.upper())
+        }
+
+    wanted, have = field(required), field(held)
+    field_score = 1.0 if not wanted else len(wanted & have) / len(wanted)
+    level_score = 1.0 if held_level >= required_level else 0.0
+    return 0.5 * level_score + 0.5 * field_score
+
+
 def any_phrase_similarity(needle: str, haystack: Iterable[str]) -> float:
     """Best `phrase_similarity` between one phrase and a collection of candidates."""
     best = 0.0

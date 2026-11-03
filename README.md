@@ -417,6 +417,7 @@ flowchart LR
 
 - **Chunking:** section-aware and sentence-aware, targeting 350 characters with a 600 maximum and one sentence of overlap.
 - **Hybrid search:** dense cosine and sparse BM25 rankings are combined with Reciprocal Rank Fusion, weighted 0.6 and 0.4 with `k = 60`.
+- **What counts as evidence:** a chunk that names the requirement always counts, because a one-word query scores low against a long passage even when the word is in it. Otherwise a chunk must clear the model's similarity floor and be prose; a skills list that only resembles a requirement does not count.
 - **Evidence ranking:** similarity 70%, section 15%, technical specificity 10%, density 5%.
 - **Optional LLM stage:** verification and re-ranking are off by default. The model can only judge text that retrieval already returned, within a 20-second deadline.
 
@@ -527,24 +528,16 @@ Open <http://localhost:5173>. The recruiter pages need only the hiring backend. 
 
 ### 3. Job Portal API (optional)
 
-A fresh clone needs two workarounds, explained under [Known issues](#known-issues-and-limitations).
-
 ```powershell
-# The build fails unless this gitignored file exists
-Set-Content job_portal\frontend\.env "VITE_API_BASE=http://localhost:5290"
-
 cd job_portal\backend\JobPortal.Api
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 $env:ASPNETCORE_URLS = "http://localhost:5290"
-dotnet run --no-launch-profile -- `
-  "--Rag:PostgresConnectionString=Host=127.0.0.1;Port=5432;Database=ragdb;Username=raguser;Password=dev-only-change-me;Timeout=2" `
-  "--Ollama:BaseUrl=" "--Ollama:ChatModel=" "--Ollama:EmbedModel=" `
-  "--Portal:PythonStorageDir=..\..\..\ai_hiring_platform\storage"
+dotnet run --no-launch-profile -- "--Ollama:BaseUrl=" "--Ollama:ChatModel=" "--Ollama:EmbedModel="
 ```
 
-Swagger is at <http://localhost:5290/swagger>, and `GET /api/health` reports which capabilities are active. This command runs in fallback mode with no models. Without a running Postgres, it logs connection errors and RAG mode is unavailable; the other modes still work.
+Swagger is at <http://localhost:5290/swagger>, and `GET /api/health` reports which capabilities are active. The empty `Ollama` values run the API in fallback mode with no models; replace them with your own endpoint and model names to enable AI features. Without RAG settings, the RAG scoring mode reports itself unavailable and the other modes work normally.
 
-To enable RAG mode, start its storage with `docker compose -f docker-compose.rag.yml up -d`, and also pass `--Rag:QdrantApiKey=dev-only-change-me` plus real chat and embedding model settings. That compose file binds both services to loopback only. Set real credentials before running it anywhere other than a laptop. This path was not exercised while preparing this document.
+To enable RAG mode, start its storage with `docker compose -f docker-compose.rag.yml up -d`, then also pass `--Rag:PostgresConnectionString=Host=127.0.0.1;Port=5432;Database=ragdb;Username=raguser;Password=dev-only-change-me` and `--Rag:QdrantApiKey=dev-only-change-me`, plus real chat and embedding model settings. That compose file binds both services to loopback only. Set real credentials before running it anywhere other than a laptop. This path was not exercised while preparing this document.
 
 ### 4. Company Intelligence (optional)
 
@@ -629,7 +622,7 @@ Keys use .NET nesting, so `Ollama__ApiKey` maps to `Ollama:ApiKey`. Precedence m
 | `Ollama__BaseUrl`, `Ollama__ChatModel`, `Ollama__ApiKey` | Replies are composed deterministically |
 | `Ollama__EmbedModel`, `Ollama__EmbedBaseUrl`, `Ollama__EmbedDimension` | A hashing embedder compares wording rather than meaning |
 | `Portal__DatabasePath` | Uses the hiring backend's `hiring_platform.db` |
-| `Portal__PythonStorageDir` | Uses `ai_hiring_platform/backend/storage`; see [Known issues](#known-issues-and-limitations) |
+| `Portal__PythonStorageDir` | Uses `ai_hiring_platform/storage`, the hiring backend's default |
 | `Portal__SpaPath` | The API does not serve a frontend |
 | `Rag__PostgresConnectionString`, `Rag__QdrantHost`, `Rag__QdrantPort`, `Rag__QdrantApiKey` | RAG services are not registered |
 
@@ -722,25 +715,15 @@ Results from a clean install on Windows 11 with Python 3.12 and the .NET 9 SDK:
 
 | Suite | Command | Result |
 |---|---|---|
-| Hiring backend | `python -m pytest` in `ai_hiring_platform/backend` | **597 passed, 3 failed** (600) |
-| Job Portal API | `dotnet test` in `job_portal/backend/JobPortal.Api.Tests` | **257 passed** |
+| Hiring backend | `python -m pytest` in `ai_hiring_platform/backend` | **644 passed** |
+| Job Portal API | `dotnet test` in `job_portal/backend/JobPortal.Api.Tests` | **261 passed** |
 | Company Intelligence | `python -m pytest` in `company_intel` | **129 passed** |
 | Frontend tests | `npx vitest run` in `ai_hiring_platform/frontend` | **67 passed** |
 | Frontend build and lint | `npm run build`, `npm run lint` | Passed |
 
-The three hiring backend failures:
-
-| Test | Failure |
-|---|---|
-| `test_embedding_engines.py::test_local_engine_is_the_default_and_always_available` | Expects 384 dimensions, but the code uses BGE-large at 1024 |
-| `test_rag.py::test_vector_store_and_retrieval` | Retrieval returns no matches above the similarity floor |
-| `test_skill_reasoning.py::test_equivalent_skill_rescues_missing_requirement` | `mysql` is reported as Missing rather than rescued as equivalent |
-
-The first is an outdated test. The other two have not been root-caused.
-
 Older documents in this repository quote lower test counts. The table above takes precedence.
 
-The workflow at [`.github/workflows/ci.yml`](.github/workflows/ci.yml) covers only the Job Portal API and the retired `job_portal/frontend`. It does not run the hiring backend, the current frontend, or Company Intelligence.
+The workflow at [`.github/workflows/ci.yml`](.github/workflows/ci.yml) covers only the Job Portal API and the retired `job_portal/frontend`. It does not run the hiring backend, the current frontend, or Company Intelligence. Its port-consistency step still reads `job_portal/frontend/.env`, which is not in the repository, so that step is expected to fail until it is updated.
 
 ## Deployment
 
@@ -785,23 +768,20 @@ Protections already in place include guardrails on the assistant, fencing of cra
 
 | Issue | Detail | Workaround |
 |---|---|---|
-| **.NET build fails on a fresh clone** | The `CheckPortConsistency` target in `JobPortal.Api.csproj` requires `job_portal/frontend/.env`, which is gitignored. The CI build should hit the same error. | Create the file as shown in [step 3](#3-job-portal-api-optional) |
-| **Job Portal API crashes without RAG settings** | `AddRagMode` registers nothing when unconfigured, but `ChatOrchestrator` requires `IRagMatchingService`. This contradicts the claim in `job_portal/README.md` that the portal runs with nothing set. | Provide a Postgres connection string; a placeholder is enough to start |
 | **Model defaults cannot be changed from `.env`** | `appsettings.json` defaults to a local Ollama at `http://localhost:11434` with named models, and the portal's `.env` only fills gaps. | Override with environment variables or command-line arguments |
-| **`portal_skill_verdict_cache` table is missing** | `SkillTransferService` queries it, but `PortalSchemaInitializer` never creates it. It was absent from a freshly initialized database. The code path that needs a chat model was not exercised. | None currently |
-| **"Import platform JDs" path mismatch** | The portal looks in `backend/storage`, but the hiring backend writes to `ai_hiring_platform/storage` by default. | Set `Portal__PythonStorageDir` |
 | **Accepting an applicant records the decision only** | The endpoint that would bring an applicant into the hiring pipeline is not built, as the Applicants page itself states. | Evaluate accepted candidates from AI Analysis |
 
 ### Scoring quality on the deterministic path
 
-These were observed with sample documents, using `bge` and no LLM. They have not been re-tested with an LLM configured.
+These were observed with sample documents, using `bge` and no LLM. They have not been tested with an LLM configured.
 
-- **Skills present in the resume can be reported as missing.** A resume describing PostgreSQL work in its Experience section was scored as missing `postgresql`.
-- **Ordinary words can become requirements.** Words such as "Minimum", "Joining", and "Mentor" were extracted from a job description and counted as missing skills.
-- **Demonstrated skills can be flagged as over-claimed.** Docker and Python were reported as "listed but not demonstrated" for a resume that used both in its Experience section.
-- **Scores can run low as a result.** A closely matching candidate scored 67.1 (Moderate fit). Relative ordering was still sensible in the sample run: the backend candidate ranked first, and the marketing and data analyst candidates ranked last for a backend role.
+- **Locations on a contact line are not read.** A resume's location is only recognised next to a label or a postal code, so `Bengaluru, India` on a contact line scores neutrally on Location.
+- **Experience counts as a skill in Skill Match.** A requirement such as `5+ years experience` is listed as "not found" in Skill Match, even though Experience Match scores it correctly.
+- **Abbreviations in a skills list can be missed.** A skills list only counts when it names the requirement, so `K8s` does not satisfy `Kubernetes` on its own. Well-known spelling variants such as `ReactJS` are handled.
+- **Skill equivalence is deliberately narrow.** Cosine similarity cannot separate true equivalents on this model: `sql`/`mysql` scores 0.750, but `html`/`xml` scores 0.771. Names ending in the other's name, such as `MySQL` and `SQL`, count as equivalent above a 0.74 floor. Others need a cosine of at least 0.80.
+- **Sample results are small.** Ordering was sensible across 8 evaluations of 5 fictional resumes against 3 job descriptions, but the scoring has not been measured against real hiring decisions.
 
-Treat absolute scores with caution on this path, and review the evidence behind them.
+Review the evidence behind a score, especially on this path.
 
 ### Other limitations
 

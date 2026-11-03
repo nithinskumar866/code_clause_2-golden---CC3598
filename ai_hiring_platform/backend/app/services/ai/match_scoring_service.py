@@ -285,7 +285,7 @@ def _education_match(job: JobProfile, facets: CandidateFacets) -> Outcome:
     if not candidate:
         return settings.MATCH_NEUTRAL_EDUCATION, "No education details could be read from the resume.", True
 
-    similarity = tm.phrase_similarity(job.education, candidate)
+    similarity = tm.qualification_similarity(job.education, candidate)
     score = _clamp(similarity * 100.0)
     shown = facets.education or "the resume's education section"
     return score, (

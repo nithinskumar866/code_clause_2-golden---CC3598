@@ -28,8 +28,13 @@ public static class RagServiceCollectionExtensions
         // Disabled, or not configured: register nothing. A half-registered feature
         // whose services resolve but whose stores are absent fails at the first
         // request instead of at startup, which is the worse of the two.
+        //
+        // The chat orchestrator still depends on the matching service, so an unconfigured
+        // deployment gets the stand-in that reports the mode as unavailable. The chat
+        // already handles that by falling back to the computed score and saying so.
         if (!options.Enabled || string.IsNullOrWhiteSpace(options.PostgresConnectionString))
         {
+            services.AddScoped<IRagMatchingService, UnavailableRagMatchingService>();
             return services;
         }
 

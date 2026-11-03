@@ -301,6 +301,11 @@ class Settings:
     #   >= RELATED     : adjacent skill — note the transfer, but never claim the skill.
     SKILL_EQUIVALENCE_MIN: float = float(os.getenv("SKILL_EQUIVALENCE_MIN", "0.80"))
     SKILL_RELATED_MIN: float = float(os.getenv("SKILL_RELATED_MIN", "0.68"))
+    # Equivalence when one skill's name ends with the other's (SQL / MySQL). Cosine alone
+    # cannot decide these on bge-large: sql/mysql is 0.750 but html/xml is 0.771 and
+    # java/javascript 0.747. The name is the extra evidence, and this floor keeps out the
+    # names that end alike but mean something else (sql/nosql 0.718, react/preact 0.643).
+    SKILL_FAMILY_MIN: float = float(os.getenv("SKILL_FAMILY_MIN", "0.74"))
 
     # --- Authenticity / keyword-stuffing detection (deterministic) ---
     # A claimed skill is "over-claimed" when it appears only in listing sections

@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 from app.core.constants import TECH_TAXONOMY
 from app.core.config import settings
 from app.core.logging import logger
+from app.services.ai import text_matching as tm
 
 # ---------------------------------------------------------------------------
 # Requirement extraction is DETERMINISTIC by design: the JD is a raw document,
@@ -97,6 +98,31 @@ _DUTY_VERB = re.compile(
 )
 
 
+# The degree itself is scored by the Match Score's Education parameter, and the
+# subject after it ("in Computer Science") qualifies the degree. Neither is a skill.
+# Written out rather than using text_matching's degree check, which also accepts bare
+# words like "master" and would swallow "Certified Scrum Master".
+_DEGREE_SENTENCE = re.compile(r"\b(?:degree|bachelor(?:'?s)?|master's|masters|ph\.?d)\b", re.I)
+
+
+def _opens_a_sentence(sentence: str, end: int) -> bool:
+    """
+    Whether a capitalised first word is capitalised only because a sentence starts there.
+
+    "Minimum 5 years", "Mentor junior engineers" and "Bachelor's degree" run straight on
+    into ordinary text. A real name stands alone ("Snowflake") or sits in a list
+    ("Snowflake, Airflow" / "Snowflake and Airflow"). Named technologies in the opening
+    position are still found by the taxonomy layer and the possession cues.
+    """
+    rest = sentence[end:]
+    if rest[:1] in ("'", "\u2019"):
+        return True
+    next_word = rest.strip().split(" ")[0] if rest.strip() else ""
+    if not next_word or next_word.lower() in ("and", "or"):
+        return False
+    return next_word[0].islower() or next_word[0].isdigit()
+
+
 def _sentences(text: str) -> List[str]:
     """Split a line into sentences so phrase patterns cannot reach across a full stop."""
     return [s.strip() for s in _SENTENCE_SPLIT.split(text or "") if s.strip()]
@@ -134,7 +160,8 @@ def _requirement_lines(jd_text: str) -> List[str]:
     like 'We are looking for...' so capitalised-phrase extraction stays low-noise."""
     lines = [ln.strip() for ln in jd_text.split("\n") if ln.strip()]
     out, in_req_block = [], False
-    header = re.compile(r"^\s*(requirements|qualifications|skills|responsibilities|"
+    header = re.compile(r"^\s*((?:required|preferred|key|core|technical|mandatory|desired)\s+skills|"
+                        r"requirements|qualifications|skills|responsibilities|"
                         r"what you.ll (need|do)|must have|nice to have|tech stack)\b", re.I)
     bullet = re.compile(r"^\s*(?:[-*•▪◦]|\d+[.)])\s+")
     cue_line = re.compile(_CUE, re.I)
@@ -185,6 +212,9 @@ def extract_requirements(jd_text: str) -> List[str]:
             for m in _CUE_BEFORE.finditer(sentence):
                 add(_clean_phrase(m.group(1)))
 
+            if _DEGREE_SENTENCE.search(sentence):
+                continue
+
             for m in _CAP_PHRASE.finditer(sentence):
                 phrase = m.group(1)
                 # A capitalised word at the START of a sentence is capitalised by
@@ -193,7 +223,10 @@ def extract_requirements(jd_text: str) -> List[str]:
                 # technologies in that position are still caught by Layer 1.
                 if m.start() == 0:
                     first = phrase.split()[0]
-                    if first.lower() not in known_lc and _DUTY_VERB.match(first):
+                    if first.lower() not in known_lc and (
+                        _DUTY_VERB.match(first)
+                        or (" " not in phrase and _opens_a_sentence(sentence, m.end()))
+                    ):
                         continue
                 add(_clean_phrase(phrase))
 

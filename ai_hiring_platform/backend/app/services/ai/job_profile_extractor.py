@@ -219,8 +219,9 @@ def _extract_education(text: str) -> Optional[str]:
     if labelled:
         return labelled
     for line in (text or "").split("\n"):
-        if tm.mentions_a_degree(line) and len(line.split()) <= 20:
-            return _clean(line)
+        for sentence in re.split(r"(?<=[.!?;])\s+", line):
+            if tm.mentions_a_degree(sentence) and len(sentence.split()) <= 20:
+                return _clean(sentence)
     return None
 
 

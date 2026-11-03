@@ -4,7 +4,7 @@ from llama_index.core import VectorStoreIndex
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.constants import TECH_TAXONOMY
-from app.services.ai import keyword_retrieval
+from app.services.ai import keyword_retrieval, text_matching
 
 # Single source of known technologies (no parallel hardcoded keyword list).
 _KNOWN_TECH = {s.lower() for skills in TECH_TAXONOMY.values() for s in skills}
@@ -24,6 +24,21 @@ def _technical_specificity(text: str) -> int:
         if len(tok) >= 2:
             hits.add(tok)
     return min(len(hits) * 20, 100)
+
+def _is_evidence(text: str, section: str, requirement: str, cosine: float, floor: float) -> bool:
+    """
+    Whether a chunk counts as evidence for a requirement.
+
+    Naming the requirement always counts: a one-word query against a long passage scores
+    low even when the word is in it. Otherwise the chunk must clear the similarity floor
+    and be prose. A skills list is a run of technology names, so it sits near every
+    technology query (`salesforce` scores 0.62 against a list without it, `postgresql`
+    0.58 against a list with it), and resembling a requirement says nothing about it.
+    """
+    if text_matching.mentions_term(text, requirement):
+        return True
+    return cosine >= floor and section != "Skills"
+
 
 def _build_match(node, cosine: float) -> Dict[str, Any]:
     """Compute the ranking signals + confidence blend for one retrieved chunk."""
@@ -179,9 +194,10 @@ def retrieve_evidence_for_requirements(
                 if chunk_txt in seen_chunks:
                     continue
                 seen_chunks.add(chunk_txt)
-                # Similarity floor: drop unrelated nearest-neighbours so an absent skill
-                # yields no evidence (→ "Missing").
-                if cosine < threshold:
+                # Drop unrelated nearest-neighbours so an absent skill yields no evidence
+                # (→ "Missing").
+                section = node.metadata.get("section", "Summary")
+                if not _is_evidence(chunk_txt, section, req, cosine, threshold):
                     continue
                 matches.append(_build_match(node, cosine))
 
@@ -249,15 +265,17 @@ def retrieve_evidence_from_store(
 
     for req in requirements:
         try:
-            hits = model_index.search(req, top_k=max(top_k * 4, 12), resume_ids={resume_id})
+            # Every row of this resume, because a chunk naming the requirement counts
+            # even when it ranks low. A resume filter scores them all regardless.
+            hits = model_index.search(req, top_k=len(rows), resume_ids={resume_id})
 
             matches: List[Dict[str, Any]] = []
             seen: set = set()
             for row, cosine in hits:
-                if cosine < threshold:
-                    continue
                 chunk = model_index.chunks[row]
                 text = (chunk["text"] or "").strip()
+                if not _is_evidence(text, chunk["section"], req, cosine, threshold):
+                    continue
                 if text in seen:
                     continue
                 seen.add(text)

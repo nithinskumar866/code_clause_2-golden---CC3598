@@ -162,6 +162,27 @@ public static class PortalSchemaInitializer
         "CREATE INDEX IF NOT EXISTS IX_portal_applications_JobId ON portal_applications (JobId)",
         "CREATE INDEX IF NOT EXISTS IX_portal_applications_ResumeId ON portal_applications (ResumeId)",
         "CREATE INDEX IF NOT EXISTS IX_portal_applications_Status ON portal_applications (Status)",
+
+        """
+        CREATE TABLE IF NOT EXISTS portal_skill_verdict_cache (
+            Id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            JobId                 INTEGER NOT NULL,
+            CandidateSkillSetHash TEXT NOT NULL DEFAULT '',
+            RequiredSkill         TEXT NOT NULL DEFAULT '',
+            Verdict               TEXT NOT NULL DEFAULT '',
+            EvidenceSkill         TEXT NULL,
+            Confidence            REAL NOT NULL DEFAULT 0,
+            ModelVersion          TEXT NOT NULL DEFAULT '',
+            PromptVersion         TEXT NOT NULL DEFAULT '',
+            CreatedAt             TEXT NOT NULL,
+            UpdatedAt             TEXT NOT NULL,
+            FOREIGN KEY (JobId) REFERENCES portal_jobs (Id) ON DELETE CASCADE
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS IX_portal_skill_verdict_cache_Key " +
+        "ON portal_skill_verdict_cache (JobId, CandidateSkillSetHash, RequiredSkill)",
+        "CREATE INDEX IF NOT EXISTS IX_portal_skill_verdict_cache_JobId ON portal_skill_verdict_cache (JobId)",
+        "CREATE INDEX IF NOT EXISTS IX_portal_skill_verdict_cache_PromptVersion ON portal_skill_verdict_cache (PromptVersion)",
     };
 
     public static async Task InitializeAsync(PortalDbContext db, ILogger logger, CancellationToken ct = default)

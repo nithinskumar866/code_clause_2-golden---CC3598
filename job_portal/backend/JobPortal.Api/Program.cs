@@ -231,7 +231,9 @@ internal static class PortalPaths
             options.DatabasePath = Path.Combine(pythonBackend, "hiring_platform.db");
 
         if (string.IsNullOrWhiteSpace(options.PythonStorageDir))
-            options.PythonStorageDir = Path.Combine(pythonBackend, "storage");
+            // Matches STORAGE_DIR's default in the Python backend's core/constants.py,
+            // which sits beside backend/, not inside it.
+            options.PythonStorageDir = Path.Combine(repoRoot, "ai_hiring_platform", "storage");
 
         if (string.IsNullOrWhiteSpace(options.ResumeUploadDir))
             options.ResumeUploadDir = Path.Combine(contentRoot, "storage", "resumes");
